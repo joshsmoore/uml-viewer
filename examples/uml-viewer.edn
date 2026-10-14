@@ -10,7 +10,9 @@
   [:main.uml-viewer :rust-language.source-rust] :association,
   [:application.document :engine.compose] :association,
   [:main.uml-viewer :typescript-language.source-typescript] :association,
+  [:main.uml-viewer :ruby-language.source-ruby] :association,
   [:main :python-language] :association,
+  [:main.ir-generator :ruby-language.graph-ruby] :association,
   [:engine.compose :engine.layout] :association,
   [:engine.compose :engine.route] :association,
   [:main.ir-generator :rust-language.graph-rust] :association,
@@ -21,6 +23,7 @@
   [:main.ir-generator :application.ir-generator] :association,
   [:main.uml-viewer :python-language.source-python] :association,
   [:main :adapters] :association,
+  [:main :ruby-language] :association,
   [:main :rust-language] :association,
   [:main.ir-generator :python-language.graph-python] :association,
   [:main :typescript-language] :association},
@@ -32,7 +35,8 @@
    :clojure-language
    :typescript-language
    :rust-language
-   :python-language]
+   :python-language
+   :ruby-language]
   [:engine]
   [:application]
   [:adapters]
@@ -49,11 +53,13 @@
   :typescript-language
   :rust-language
   :python-language
+  :ruby-language
   :domain],
  :omit [],
  :edges
  [{:from :main.uml-viewer, :to :adapters.core, :kind :dependency}
   {:from :engine.route, :to :engine.curve, :kind :dependency}
+  {:from :ruby-language.source-ruby, :to :source, :kind :dependency}
   {:from :typescript-language.source-typescript, :to :source, :kind :dependency}
   {:from :main.ir-generator,
    :to :typescript-language.graph-typescript,
@@ -81,10 +87,13 @@
   {:from :adapters.draw, :to :application.detail, :kind :dependency}
   {:from :adapters.draw, :to :quil, :kind :dependency}
   {:from :main.uml-viewer, :to :domain.log, :kind :dependency}
+  {:from :ruby-language.graph-ruby, :to :graph, :kind :implements}
   {:from :adapters.draw, :to :engine.curve, :kind :dependency}
+  {:from :main.uml-viewer, :to :ruby-language.source-ruby, :kind :dependency}
   {:from :application.events, :to :application.detail, :kind :dependency}
   {:from :adapters.source-window, :to :source, :kind :dependency}
   {:from :domain.hierarchy, :to :domain.config, :kind :dependency}
+  {:from :main.ir-generator, :to :ruby-language.graph-ruby, :kind :dependency}
   {:from :application.ir-generator, :to :domain.policy, :kind :dependency}
   {:from :application.events, :to :application.document, :kind :dependency}
   {:from :adapters.draw, :to :engine.hit, :kind :dependency}
@@ -334,6 +343,20 @@
    :level 0,
    :lang :clojure,
    :id :python-language.source-python}
+  {:stereotype nil,
+   :ns "uml-viewer.ruby-language.graph-ruby",
+   :name "GraphRuby",
+   :file "src/uml_viewer/ruby_language/graph_ruby.clj",
+   :level 0,
+   :lang :clojure,
+   :id :ruby-language.graph-ruby}
+  {:stereotype nil,
+   :ns "uml-viewer.ruby-language.source-ruby",
+   :name "SourceRuby",
+   :file "src/uml_viewer/ruby_language/source_ruby.clj",
+   :level 0,
+   :lang :clojure,
+   :id :ruby-language.source-ruby}
   {:stereotype nil,
    :ns "uml-viewer.rust-language.graph-rust",
    :name "GraphRust",
