@@ -44,7 +44,7 @@ The diagram is already on screen.
   `.uml-viewer/to-viewer.edn`, wait for the JVM to exit, then
   `./uml --restart`. Do not pass `--restart` except through that
   wrapper. Do not SIGKILL. Closing the viewer kills only this
-  companion's tmux session, not other Grok agents. If this Grok
+  companion's tmux session, not other Claude agents. If this Claude
   process dies, tmux respawns it in the same pane.
 
 Do not commit or push unless asked. Esc interrupts a turn in this terminal;

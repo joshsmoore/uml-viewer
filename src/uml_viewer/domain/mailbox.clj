@@ -1,5 +1,5 @@
 (ns uml-viewer.domain.mailbox
-  "File mailbox between the viewer and the companion Grok.
+  "File mailbox between the viewer and the companion Claude.
   Payload is durable EDN; tmux is only a wake-up."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io])

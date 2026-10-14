@@ -92,8 +92,8 @@
        "changes. To restart it: write :quit-for-restart, wait for the JVM to\n"
        "exit, then ./uml --restart. Do not pass --restart except through that\n"
        "wrapper (or :uml-viewer-restart). Do not SIGKILL. Closing the viewer\n"
-       "kills only this companion's tmux session, not other Grok agents. If\n"
-       "this Grok process dies, tmux respawns it in the same pane.\n"
+       "kills only this companion's tmux session, not other Claude agents. If\n"
+       "this Claude process dies, tmux respawns it in the same pane.\n"
        "Do not commit or push unless asked.\n"))
 
 (def launch-prompt
@@ -101,20 +101,21 @@
        "to match the project's namespaces (no invented layers/components), regenerate the "
        "IR, then wait for directives."))
 
-(defn grok-executable
+(defn claude-executable
   []
   (let [home (System/getenv "HOME")
-        named (System/getenv "GROK_BIN")
+        named (System/getenv "CLAUDE_BIN")
         candidates (filter identity
                            [named
-                            (when home (str home "/.grok/bin/grok"))
-                            "/usr/local/bin/grok"
-                            "/opt/homebrew/bin/grok"])]
+                            (when home (str home "/.local/bin/claude"))
+                            (when home (str home "/.claude/local/claude"))
+                            "/usr/local/bin/claude"
+                            "/opt/homebrew/bin/claude"])]
     (or (first (filter (fn [p]
                          (let [f (io/file p)]
                            (and (.isFile f) (.canExecute f))))
                        candidates))
-        "grok")))
+        "claude")))
 
 (defonce !session-name (atom nil))
 
@@ -126,8 +127,6 @@
                  (str/replace #"[^A-Za-z0-9_-]" "-"))
         h (Integer/toHexString (hash path))]
     (str "uml-viewer-" base "-" h)))
-
-(def legacy-session "uml-viewer-grok")
 
 (defn current-session
   "Session name for this project, from companion.edn or the live atom."
@@ -146,12 +145,11 @@
     (catch Exception _ 1)))
 
 (defn session-candidates
-  "Names to try, unique first, then the pre-isolation session."
+  "Names to try: companion.edn, the live atom, then this project's id."
   [root]
   (->> [(:session (mailbox/read-companion root))
         @!session-name
-        (when root (session-id root))
-        legacy-session]
+        (when root (session-id root))]
        (filter seq)
        distinct
        vec))
@@ -175,10 +173,9 @@
   ([cwd] (new-session-args cwd (session-id cwd)))
   ([cwd session]
    ["new-session" "-d" "-s" session "-c" cwd
-    "-e" "GROK_THEME=terminal"
-    "-e" "GROK_TERMINAL_THEME=1"
     "-e" "COLORTERM=truecolor"
-    (grok-executable) "--yolo" "--trust" "--rules" standing-rules
+    (claude-executable) "--dangerously-skip-permissions"
+    "--append-system-prompt" standing-rules
     launch-prompt]))
 
 (defn kill-session-args
@@ -190,17 +187,16 @@
   "You have mail from the viewer. If idle, read .uml-viewer/to-agent.edn.")
 
 (defn notify-steps
-  "SwarmForge-style wake-up: literal text, pause, CR, pause, LF."
+  "Wake-up: literal text, pause, then CR. Claude Code reads LF (C-j) as a
+  newline in the prompt, so none is sent."
   ([] (notify-steps (current-session)))
   ([session]
    [["send-keys" "-t" session "-l" wake-message]
     [:sleep 150]
-    ["send-keys" "-t" session "C-m"]
-    [:sleep 50]
-    ["send-keys" "-t" session "C-j"]]))
+    ["send-keys" "-t" session "C-m"]]))
 
 (defn notify-agent!
-  "Wake the companion Grok session. Returns false if tmux/session is missing."
+  "Wake the companion Claude session. Returns false if tmux/session is missing."
   ([] (notify-agent! (System/getProperty "user.dir")))
   ([root]
    (if-let [session (live-session root)]
@@ -214,13 +210,13 @@
      false)))
 
 (defn request-agent!
-  "Queue `op` for the companion and wake Grok. Returns {:cmd :woke?}."
+  "Queue `op` for the companion and wake Claude. Returns {:cmd :woke?}."
   [root op extra]
   (let [cmd (mailbox/write-command! (mailbox/to-agent root) op extra)]
     {:cmd cmd :woke? (notify-agent! root)}))
 
 (defn request-regen!
-  "Queue a :regen command and wake Grok. Returns {:cmd :woke?}."
+  "Queue a :regen command and wake Claude. Returns {:cmd :woke?}."
   [root]
   (request-agent! root :regen {}))
 
@@ -240,7 +236,7 @@
 (defn terminal-title
   ([] (terminal-title (current-session)))
   ([session]
-   (or session "UML Grok")))
+   (or session "UML Claude")))
 
 (defonce !terminal-window-id (atom nil))
 
@@ -257,18 +253,18 @@
    (let [title (terminal-title session)]
      (str "tell application \"Terminal\"\n"
           "launch\n"
-          "set grokTab to do script " (pr-str shell-cmd) "\n"
-          "set background color of grokTab to " (applescript-rgb draw/bg) "\n"
-          "set normal text color of grokTab to " (applescript-rgb draw/ink) "\n"
-          "set bold text color of grokTab to " (applescript-rgb draw/gold) "\n"
-          "set cursor color of grokTab to " (applescript-rgb draw/gold) "\n"
-          "set font name of grokTab to \"Menlo\"\n"
-          "set font size of grokTab to 13\n"
-          "set custom title of grokTab to \"" title "\"\n"
-          "set title displays custom title of grokTab to true\n"
-          "set title displays device name of grokTab to false\n"
-          "set title displays shell path of grokTab to false\n"
-          "set title displays settings name of grokTab to false\n"
+          "set claudeTab to do script " (pr-str shell-cmd) "\n"
+          "set background color of claudeTab to " (applescript-rgb draw/bg) "\n"
+          "set normal text color of claudeTab to " (applescript-rgb draw/ink) "\n"
+          "set bold text color of claudeTab to " (applescript-rgb draw/gold) "\n"
+          "set cursor color of claudeTab to " (applescript-rgb draw/gold) "\n"
+          "set font name of claudeTab to \"Menlo\"\n"
+          "set font size of claudeTab to 13\n"
+          "set custom title of claudeTab to \"" title "\"\n"
+          "set title displays custom title of claudeTab to true\n"
+          "set title displays device name of claudeTab to false\n"
+          "set title displays shell path of claudeTab to false\n"
+          "set title displays settings name of claudeTab to false\n"
           "set winID to id of front window\n"
           "end tell\n"
           "tell application \"System Events\"\n"
@@ -306,7 +302,7 @@
     (catch Exception _ "")))
 
 (defn close-terminal-window!
-  "Close the Terminal window that attached to the grok session."
+  "Close the Terminal window that attached to the Claude session."
   []
   (run-osascript (close-terminal-script @!terminal-window-id))
   (reset! !terminal-window-id nil))
@@ -319,7 +315,7 @@
     (apply tmux! (kill-session-args session))))
 
 (defn- arm-respawn!
-  "If Grok dies, tmux restarts that pane only — not other agents."
+  "If Claude dies, tmux restarts that pane only — not other agents."
   [session]
   (let [pane (str session ":0.0")]
     (tmux! "set-option" "-p" "-t" pane "remain-on-exit" "on")
@@ -327,7 +323,7 @@
     (tmux! "set-option" "-t" session "status" "off")))
 
 (defn open-in-terminal!
-  "Start this project's companion Grok in its own tmux session."
+  "Start this project's companion Claude in its own tmux session."
   ([] (open-in-terminal! (System/getProperty "user.dir")))
   ([cwd]
    (let [session (session-id cwd)
@@ -752,7 +748,7 @@
         {:keys [woke?]} (request-regen! root)]
     (assoc state :mail-status (if woke?
                                 "Regen requested."
-                                "Regen queued; Grok session not attached."))))
+                                "Regen queued; Claude session not attached."))))
 
 (defn- proposal-menu-click? [event hit]
   (and (right-click? event) (= :proposal (:kind hit))))
