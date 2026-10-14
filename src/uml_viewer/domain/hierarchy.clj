@@ -194,15 +194,23 @@
     (let [ext (join-id (take (max 1 (count path)) (segs id)))]
       {:id ext :name (node-label ext) :external true})))
 
-(defn- add-port [m box-id dep]
-  (let [cur (get m box-id [])]
-    (if (some #(= (:id dep) (:id %)) cur)
-      m
-      (assoc m box-id (conj cur (select-keys dep [:id :name]))))))
+(defn- port-carry
+  "Port `p` also carrying edge `e`: its class pair, and red if `e` is."
+  [p e]
+  (cond-> (update p :deps (fnil conj []) (policy/leaf-of e))
+    (:violating e) (assoc :violating true)))
+
+(defn- add-port [m box-id dep e]
+  (let [cur (get m box-id [])
+        i (first (keep-indexed (fn [i p] (when (= (:id dep) (:id p)) i)) cur))]
+    (assoc m box-id
+           (if i
+             (update cur i port-carry e)
+             (conj cur (port-carry (select-keys dep [:id :name]) e))))))
 
 (defn- add-foreign [acc box-id dep e]
   (let [fid (:id dep)
-        edge (assoc e :from box-id :to fid)
+        edge (policy/re-end e box-id fid)
         seen (some #(= fid (:id %)) (:foreign acc))]
     (cond-> (update acc :foreign-edges conj edge)
       (not seen) (update :foreign conj
@@ -246,19 +254,19 @@
 (defn- route-edge [acc e {:keys [from to-in to-ext from-ext] :as ends}]
   (cond
     (internal-edge? ends)
-    (update acc :internal conj (assoc e :from from :to to-in))
+    (update acc :internal conj (policy/re-end e from to-in))
 
     (foreign-out? ends)
     (add-foreign acc from to-ext e)
 
     (port-out? ends)
-    (update acc :out add-port from to-ext)
+    (update acc :out add-port from to-ext e)
 
     (foreign-in? ends)
-    (add-foreign acc to-in from-ext (assoc e :from (:id from-ext) :to to-in))
+    (add-foreign acc to-in from-ext (policy/re-end e (:id from-ext) to-in))
 
     (port-in? ends)
-    (update acc :in add-port to-in from-ext)
+    (update acc :in add-port to-in from-ext e)
 
     :else acc))
 
@@ -367,7 +375,7 @@
                                              [(:from e) (:to e)
                                               (:orig-from e) (:orig-to e)])
                                            es))
-                     deps (mapv leaf-dep es)]
+                     deps (vec (distinct (mapcat #(or (seq (:leaves %)) [(leaf-dep %)]) es)))]
                  (cond-> (assoc (dissoc best :violating :orig-from :orig-to)
                            :via-ids (disj via nil)
                            :deps deps)
@@ -506,7 +514,7 @@
                (let [from (covering-visible (:from e) visible owners)
                      to (covering-visible (:to e) visible owners)]
                  (when (and from to (not= from to))
-                   (assoc e :from from :to to)))))
+                   (policy/re-end e from to)))))
        vec))
 
 (defn- group-owners

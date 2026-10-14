@@ -780,3 +780,24 @@
                            :cam-x 0 :cam-y 0})
         (should-contain "← Tiny" (texts log))
         (should-contain "Inspector" (texts log))))))
+
+(describe "arrow popup rows"
+  (it "shows one pair without a header"
+    (should= [{:text "a -> b" :violating nil}]
+             (draw/popup-lines [{:from :a :to :b}])))
+
+  (it "counts pairs, lists violations first, and names non-dependency kinds"
+    (let [rows (draw/popup-lines [{:from :ops.b :to :ui.x :kind :implements}
+                                  {:from :ops.a :to :ui.x :kind :dependency :violating true}])]
+      (should= "2 pairs, 1 violating" (:text (first rows)))
+      (should (:header (first rows)))
+      (should= "ops.a -> ui.x" (:text (second rows)))
+      (should (:violating (second rows)))
+      (should= "ops.b -> ui.x  (implements)" (:text (nth rows 2)))))
+
+  (it "caps a long list with a remainder row"
+    (let [deps (for [i (range 45)] {:from (keyword (str "c" i)) :to :t})
+          rows (draw/popup-lines deps)]
+      (should= "45 pairs" (:text (first rows)))
+      (should= (+ 2 draw/popup-max-lines) (count rows))
+      (should= "… 15 more" (:text (last rows))))))

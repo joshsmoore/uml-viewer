@@ -40,6 +40,18 @@
       (should= :app (:id hit))
       (should= :in (:dir hit))))
 
+  (it "hands a port's class pairs and red flag to the hover popup"
+    (let [s (scene)
+          a (first (filter #(= :a (:id %)) (:classes s)))
+          port {:id :ui :name "Ui" :violating true
+                :deps [{:from :a :to :ui.x :violating true}]
+                :rect {:x 10 :y 10 :w 40 :h 18}}
+          s (assoc s :classes [(assoc a :out-ports [port])])
+          r (:rect port)
+          hit (hit/at s (geom/cx r) (geom/cy r))]
+      (should (:violating hit))
+      (should= [{:from :a :to :ui.x :violating true}] (:deps hit))))
+
   (it "hits an outgoing port before the package frame"
     (let [s (scene)
           a (first (filter #(= :a (:id %)) (:classes s)))
@@ -107,6 +119,8 @@
              (hit/deps-of {:from :a :to :b :violating true}))
     (should= [{:from :a :to :b :violating false}]
              (hit/deps-of {:deps [] :from :a :to :b}))
+    (should= [{:from :a.x :to :b.y}]
+             (hit/deps-of {:leaves [{:from :a.x :to :b.y}] :from :a :to :b}))
     (should-be-nil (hit/deps-of {}))
     (should-be-nil (hit/deps-of {:from :a}))
     (should-be-nil (hit/deps-of {:to :b}))))

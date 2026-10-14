@@ -269,20 +269,21 @@
 
 (defn- draw-port [p hover selected]
   (let [r (:rect p)
-        on? (or (port-marked? p hover) (port-marked? p selected))]
+        on? (or (port-marked? p hover) (port-marked? p selected))
+        bad? (:violating p)]
     (rgb (if on? [74 96 78] [42 56 52]))
-    (stroke-rgb (if on? gold muted) (if on? 2.2 1))
+    (stroke-rgb (cond on? gold bad? violation :else muted) (if (or on? bad?) 2.2 1))
     (q/rect (:x r) (:y r) (:w r) (:h r) 3)
     (q/text-align :center :center)
     (q/text-size 10)
-    (rgb (if on? ink muted))
+    (rgb (cond on? ink bad? violation :else muted))
     (q/text (or (:name p) "") (geom/cx r) (geom/cy r))))
 
 (defn- clamp-x [r x]
   (max (+ (:x r) 6) (min (- (geom/right r) 6) x)))
 
-(defn- draw-port-link [[x1 y1] [x2 y2]]
-  (stroke-rgb muted 1.3)
+(defn- draw-port-link [[x1 y1] [x2 y2] bad?]
+  (stroke-rgb (if bad? violation muted) (if bad? 2.0 1.3))
   (q/line x1 y1 x2 y2)
   (arrowhead :open [x2 y2] [x1 y1]))
 
@@ -292,12 +293,12 @@
       (draw-port p hover selected)
       (let [pr (:rect p)
             x (geom/cx pr)]
-        (draw-port-link [x (geom/bottom pr)] [(clamp-x r x) (:y r)])))
+        (draw-port-link [x (geom/bottom pr)] [(clamp-x r x) (:y r)] (:violating p))))
     (doseq [p (:out-ports c)]
       (draw-port p hover selected)
       (let [pr (:rect p)
             x (geom/cx pr)]
-        (draw-port-link [(clamp-x r x) (geom/bottom r)] [x (:y pr)])))))
+        (draw-port-link [(clamp-x r x) (geom/bottom r)] [x (:y pr)] (:violating p))))))
 
 (defn- corner-mark [c]
   (case (some-> (:stereotype c) name)
@@ -361,8 +362,30 @@
    :elements "Declutter elements"
    :classes "Declutter classes"})
 
-(defn- dep-label [d]
-  (str (name (:from d)) " -> " (name (:to d))))
+(def popup-max-lines 30)
+
+(defn dep-label [d]
+  (str (name (:from d)) " -> " (name (:to d))
+       (when (and (:kind d) (not= :dependency (:kind d)))
+         (str "  (" (name (:kind d)) ")"))))
+
+(defn popup-lines
+  "Popup rows for an arrow's pairs: a count header when it bundles more
+  than one, violating pairs first, capped with a `… n more` row."
+  [deps]
+  (let [deps (vec (sort-by (juxt (complement :violating)
+                                 #(name (:from %))
+                                 #(name (:to %)))
+                           (distinct deps)))
+        bad (count (filter :violating deps))
+        shown (take popup-max-lines deps)
+        more (- (count deps) (count shown))]
+    (cond-> []
+      (> (count deps) 1)
+      (conj {:text (str (count deps) " pairs" (when (pos? bad) (str ", " bad " violating")))
+             :header true})
+      true (into (map (fn [d] {:text (dep-label d) :violating (:violating d)}) shown))
+      (pos? more) (conj {:text (str "… " more " more") :header true}))))
 
 (defn- draw-dep-triangle [ind]
   (let [[[x1 y1] [x2 y2] [x3 y3]] (:triangle ind)]
@@ -371,12 +394,9 @@
     (q/triangle x1 y1 x2 y2 x3 y3)))
 
 (defn- draw-edge-popup [hover pointer]
-  (when (and (#{:edge :dep} (:kind hover)) (seq (:deps hover)) (seq pointer))
-    (let [deps (vec (sort-by (juxt (complement :violating)
-                                   #(name (:from %))
-                                   #(name (:to %)))
-                             (:deps hover)))
-          labels (mapv dep-label deps)
+  (when (and (#{:edge :dep :port} (:kind hover)) (seq (:deps hover)) (seq pointer))
+    (let [rows (popup-lines (:deps hover))
+          labels (mapv :text rows)
           line-h 16
           pad 8
           tw (apply max 40 (map layout/text-w labels))
@@ -397,9 +417,11 @@
       (q/rect x y box-w box-h 4)
       (q/text-align :left :top)
       (q/text-size 12)
-      (doseq [[i d] (map-indexed vector deps)]
-        (rgb (if (:violating d) violation ink))
-        (q/text (dep-label d) (+ x pad) (+ y pad (* i line-h)))))))
+      (doseq [[i row] (map-indexed vector rows)]
+        (rgb (cond (:violating row) violation
+                   (:header row) gold
+                   :else ink))
+        (q/text (:text row) (+ x pad) (+ y pad (* i line-h)))))))
 
 (defn- draw-btn [r label]
   (rgb [42 61 54])

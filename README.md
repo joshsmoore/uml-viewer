@@ -137,8 +137,11 @@ Rename or move of a function is a new form: overlay does not match old names.
 - Double-click a component to open the next level. Esc or the ← label goes
   up a level, including after drilling a proposal group. Esc does not quit.
   The window close box or a `:quit-for-restart` mail message exits the app.
-- Hover an arrow for a popup of every `from -> to` it bundles, in any
-  declutter mode. Violating pairs are red.
+- Hover an arrow for a popup of every class-level `from -> to` it bundles,
+  in any declutter mode. Violating pairs are red and listed first; a long
+  list ends with `… n more`. Inside a drilled view, a port (the stub for an
+  arrow that leaves the view) is red when any pair through it is violating,
+  and hovering it shows the same list.
 - Right-click a class or component for **Refresh CRAP**, **Refresh
   Mutation**, **Refresh All Mutation**, or **Omit**. Each writes
   `to-agent.edn` and wakes the companion. CRAP runs on that class or the

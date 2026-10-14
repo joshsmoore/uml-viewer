@@ -586,6 +586,53 @@
           inner-edges (set (map (juxt :from :to) (:edges inner)))]
       (should (contains? root-edges [:engine :domain]))
       (should (contains? inner-edges [:engine.layout :engine.route]))
-      (should= [{:id :domain :name "Domain"}] (:out-deps layout))
+      (should= [{:id :domain :name "Domain"}] (map #(select-keys % [:id :name]) (:out-deps layout)))
       (should-not (contains? inner-edges [:engine.layout :domain])))))
 
+(def layered
+  {:hierarchical true
+   :classes [{:id :ops :name "Ops"} {:id :ops.a :name "A"} {:id :ops.b :name "B"}
+             {:id :ui :name "Ui"} {:id :ui.x :name "X"}]
+   :edges [{:from :ops.a :to :ui.x :kind :dependency :violating true}
+           {:from :ops.b :to :ui.x :kind :implements}]
+   :order [:ops :ui]})
+
+(describe "class pairs on a collapsed arrow"
+  (it "keeps each class pair on the box-to-box arrow"
+    (let [e (first (:edges (hierarchy/view-at layered [])))]
+      (should= [:ops :ui] [(:from e) (:to e)])
+      (should= #{{:from :ops.a :to :ui.x :kind :dependency :violating true}
+                 {:from :ops.b :to :ui.x :kind :implements :violating false}}
+               (set (:leaves e)))))
+
+  (it "lists class pairs, not boxes, when arrows collapse further"
+    (let [e (first (:edges (hierarchy/collapse-arrows (hierarchy/view-at layered []))))]
+      (should= #{:ops.a :ops.b} (set (map :from (:deps e))))))
+
+  (it "re-stamps class pairs for a proposal's layer order"
+    (let [doc (assoc layered :proposal [{:id :inner :label "Inner" :nses [:ui]}
+                                        {:id :outer :label "Outer" :nses [:ops]}])
+          e (first (filter #(seq (:leaves %)) (:edges (hierarchy/proposal-view doc))))]
+      (should-not (:violating e))
+      (should-not (some :violating (:leaves e))))))
+
+(describe "ports on a drilled view"
+  (it "carry the class pairs and red flag of the edges that leave the view"
+    (let [doc (update layered :edges conj {:from :ops.b :to :ui.x :kind :dependency})
+          view (hierarchy/view-at doc [:ops])
+          box (fn [id] (first (filter #(= id (:id %)) (mapcat :classes (:packages view)))))
+          port-a (first (:out-deps (box :ops.a)))
+          port-b (first (:out-deps (box :ops.b)))]
+      (should= :ui (:id port-a))
+      (should (:violating port-a))
+      (should= [{:from :ops.a :to :ui.x :kind :dependency :violating true}] (:deps port-a))
+      (should-not (:violating port-b))
+      (should= #{:implements :dependency} (set (map :kind (:deps port-b))))))
+
+  (it "carries pairs on incoming ports too"
+    (let [view (hierarchy/view-at layered [:ui])
+          x (first (filter #(= :ui.x (:id %)) (mapcat :classes (:packages view))))
+          port (first (:in-deps x))]
+      (should= :ops (:id port))
+      (should (:violating port))
+      (should= 2 (count (:deps port))))))

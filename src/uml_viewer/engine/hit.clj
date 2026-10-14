@@ -2,20 +2,26 @@
   (:require [uml-viewer.domain.geom :as geom]
             [uml-viewer.engine.layout :as layout]))
 
+(defn- port-hit [c p dir]
+  (cond-> {:kind :port :id (:id p) :parent (:id c) :dir dir}
+    (seq (:deps p)) (assoc :deps (vec (:deps p)))
+    (:violating p) (assoc :violating true)))
+
 (defn- port-at [c x y]
   (or (some (fn [p]
               (when (and (:rect p) (geom/inside? (:rect p) x y))
-                {:kind :port :id (:id p) :parent (:id c) :dir :in}))
+                (port-hit c p :in)))
             (:in-ports c))
       (some (fn [p]
               (when (and (:rect p) (geom/inside? (:rect p) x y))
-                {:kind :port :id (:id p) :parent (:id c) :dir :out}))
+                (port-hit c p :out)))
             (:out-ports c))))
 
 (defn deps-of
   "Leaf `from -> to` pairs on an arrow, collapsed or not."
   [e]
   (or (seq (:deps e))
+      (seq (:leaves e))
       (when (and (:from e) (:to e))
         [{:from (:from e)
           :to (:to e)

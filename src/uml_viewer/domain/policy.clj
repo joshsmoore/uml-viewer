@@ -232,13 +232,37 @@
              rt (rank-of (:to e) ranks)]
          (boolean (and rf rt (< rf rt))))))
 
+(defn leaf-of
+  "The class-level pair an arrow stands for."
+  [e]
+  {:from (:from e) :to (:to e) :kind (:kind e) :violating (boolean (:violating e))})
+
+(defn re-end
+  "`e` drawn between `from` and `to`, keeping the class pairs it carries."
+  [e from to]
+  (assoc e :from from :to to :leaves (or (:leaves e) [(leaf-of e)])))
+
+(defn- stamp-leaves
+  "Set each dependency pair on `e` to `verdict`. Other kinds never violate."
+  [e verdict]
+  (cond-> e
+    (:leaves e) (update :leaves
+                        (fn [ls]
+                          (mapv #(assoc % :violating
+                                        (boolean (and verdict (= :dependency (:kind %)))))
+                                ls)))))
+
 (defn mark-violations
-  "Set `:violating` on dependency edges that break the dependency rule."
+  "Set `:violating` on dependency edges that break the dependency rule.
+  Dependency pairs carried by an edge are judged by its ends' ranks, even
+  when a stronger kind won the arrow."
   [edges ranks]
   (mapv (fn [e]
-          (if (violating-dependency? e ranks)
-            (assoc e :violating true)
-            (dissoc e :violating)))
+          (stamp-leaves
+            (if (violating-dependency? e ranks)
+              (assoc e :violating true)
+              (dissoc e :violating))
+            (violating-dependency? (assoc e :kind :dependency) ranks)))
         edges))
 
 (defn restamp-ranks
@@ -260,7 +284,10 @@
                  (cond-> (dissoc best :violating)
                    (and (= :dependency (:kind best))
                         (some :violating es))
-                   (assoc :violating true)))))))
+                   (assoc :violating true)
+
+                   (some :leaves es)
+                   (assoc :leaves (vec (distinct (mapcat :leaves es))))))))))
 
 (defn collapse-graph
   "Rewrite foreign classes to policy `:foreign` prefixes. Unlisted externals drop."
@@ -296,11 +323,12 @@
     (->> edges
          (remove #(contains? omit [(:from %) (:to %)]))
          (mapv (fn [e]
-                 (let [e (if-let [k (get kinds [(:from e) (:to e)])]
-                           (assoc e :kind k)
-                           e)]
-                   (cond-> e
-                     (not= :dependency (:kind e)) (dissoc :violating))))))))
+                 (let [k (get kinds [(:from e) (:to e)])
+                       e (if k (assoc e :kind k) e)]
+                   (cond
+                     (= :dependency (:kind e)) e
+                     k (stamp-leaves (dissoc e :violating) false)
+                     :else (dissoc e :violating))))))))
 
 (defn- apply-kinds [edges diagram]
   (apply-edge-kinds edges (:edge-kinds diagram) (:omit-edges diagram)))

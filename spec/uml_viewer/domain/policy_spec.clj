@@ -202,3 +202,38 @@
       (should (:violating merged))
       (should= :association (:kind assoc))
       (should-be-nil (:violating assoc)))))
+
+(describe "class pairs carried by an arrow"
+  (it "re-ends an edge and remembers the pair it stood for"
+    (let [e (policy/re-end {:from :a.x :to :b.y :kind :dependency :violating true} :a :b)]
+      (should= [:a :b] [(:from e) (:to e)])
+      (should= [{:from :a.x :to :b.y :kind :dependency :violating true}] (:leaves e))
+      (should= (:leaves e) (:leaves (policy/re-end e :top :other)))))
+
+  (it "merges the pairs of every bundled edge"
+    (let [es [(policy/re-end {:from :a.x :to :b.y :kind :dependency} :a :b)
+              (policy/re-end {:from :a.z :to :b.y :kind :implements} :a :b)]
+          merged (first (policy/merge-edges es))]
+      (should= :implements (:kind merged))
+      (should= #{:a.x :a.z} (set (map :from (:leaves merged))))))
+
+  (it "re-stamps dependency pairs with the arrow's verdict"
+    (let [e (policy/re-end {:from :a.x :to :b.y :kind :dependency} :a :b)
+          ranks {:a 0 :b 1}
+          bad (first (policy/mark-violations [e] ranks))
+          ok (first (policy/mark-violations [e] {:a 1 :b 0}))]
+      (should (:violating (first (:leaves bad))))
+      (should-not (:violating (first (:leaves ok))))))
+
+  (it "clears pair violations when the arrow is remapped to association"
+    (let [e (policy/re-end {:from :a.x :to :b.y :kind :dependency :violating true} :a :b)
+          out (first (policy/apply-edge-kinds [e] {[:a :b] :association} []))]
+      (should-not (some :violating (:leaves out)))))
+
+  (it "judges dependency pairs by the ends even when implements won the arrow"
+    (let [e (assoc (policy/re-end {:from :a.x :to :b.y :kind :implements} :a :b)
+              :leaves [{:from :a.x :to :b.y :kind :implements :violating false}
+                       {:from :a.z :to :b.y :kind :dependency :violating false}])
+          out (first (policy/mark-violations [e] {:a 0 :b 1}))]
+      (should-not (:violating out))
+      (should= [false true] (mapv :violating (:leaves out))))))
