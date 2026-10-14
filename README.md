@@ -192,7 +192,7 @@ namespace is a `:dependency`. `requiring-resolve` of a quoted var is a
 `:stereotype :interface`. `defrecord` or `deftype` of a protocol is
 `:implements`. External `:require`s and `:import`s become **foreign**
 classes. The overlay fills Clojure members from `.metrics/`. TypeScript,
-Rust, and Python are separate scanners (see
+Rust, Python, and Ruby are separate scanners (see
 [Language graphs](#language-graphs)): one class per module, with exported
 members as `:ops`. The overlay joins each snapshot by `:ns`, then by
 the class id.
@@ -517,13 +517,47 @@ project name. `list[Animal]` is not. Public module-level functions and
 classes are `:ops`. A module whose public classes are only `Protocol` or
 `ABC` bases, with no public functions, is `:stereotype :interface`.
 
+**Ruby** (`uml-viewer.ruby-language.graph-ruby`) emits one class per `.rb`
+file. Point `:src` at a Rails project root and it scans `app` and `lib`.
+Pointed anywhere else, it scans that directory. With `:prefix "app"`,
+`app/models/resume.rb` is `:models.resume` and `lib/tasks_helper.rb` is
+`:lib.tasks-helper`. Underscores become hyphens. It skips `*_spec.rb`,
+`*_test.rb`, and paths under `spec`, `test`, `config`, `db`, `views`,
+`assets`, `javascript`, and `vendor`. The class is named by the constant
+the file declares, so `ruby_llm_adapter.rb` is `RubyLLMAdapter`.
+
+Rails autoloads constants, so a reference needs no `require`. The scanner
+reads each file's constant the way Zeitwerk does. Each `app/*` directory,
+its `concerns`, and `lib` are roots. A constant resolves lexically,
+innermost namespace first, so `StubAdapter.new` inside `module
+RecurlyAdapter` depends on `RecurlyAdapter::StubAdapter` before any
+top-level `StubAdapter`. `RubyLLMAdapter` and `ruby_llm_adapter` agree.
+Constants in comments, strings, heredocs, and `%w[]` literals are ignored.
+
+`class Resume < ApplicationRecord` is `:inheritance`. `include`, `extend`,
+and `prepend` are `:implements`. A module that something includes, or
+that extends `ActiveSupport::Concern`, is `:stereotype :interface`.
+`belongs_to`, `has_one`, `has_many`, and `has_and_belongs_to_many` depend
+on the target, by `class_name:` or the singular camelized name.
+Polymorphic associations are skipped. `require_relative` depends on that
+file. A superclass or mixin that is not in the project is foreign
+(`ActiveRecord::Base` is `active-record.base`), unless it is Ruby core
+such as `StandardError` or `Enumerable`. `require "json"` is foreign
+`json`. Public methods are `:ops`. Methods after a bare `private` or
+`protected` are not, nor is `initialize`. `def self.x` and methods in
+`class << self` are `self.x`.
+
+```clojure
+{:lang :ruby :src "." :prefix "app"
+ :foreign [active-record action-controller]}
+```
 
 `merge-scans` links a TypeScript `invoke("read_text")` to the Rust class
 that owns `#[tauri::command] fn read_text`, as a `:dependency`. Two
 project classes with the same id are an error. When a dependency and an
 `:implements` edge join the same pair, the IR keeps `:implements`.
 
-CRAP and mutation for TypeScript, Rust, and Python come from separate
+CRAP and mutation for TypeScript, Rust, Python, and Ruby come from separate
 tools. The overlay joins a snapshot to the class whose `:ns` equals that
 namespace. Otherwise the class id owns that name (`bookwriter.model`
 owns `model`), a dotted child rolls up (`pdf` owns `pdf.Layout`), and
@@ -654,9 +688,10 @@ extractor must satisfy `LanguageSource`:
 `:file`.
 
 **TypeScript** (`uml-viewer.typescript-language.source-typescript`),
-**Rust** (`uml-viewer.rust-language.source-rust`), and **Python**
-(`uml-viewer.python-language.source-python`) open `:file` and find the
-exported declaration, the `fn`, or the `def`. The class card passes
+**Rust** (`uml-viewer.rust-language.source-rust`), **Python**
+(`uml-viewer.python-language.source-python`), and **Ruby**
+(`uml-viewer.ruby-language.source-ruby`) open `:file` and find the
+exported declaration, the `fn`, the `def`, or the `class`/`module`. The class card passes
 `:lang` and `:file` from the class. A class with no `:lang` still uses
 the Clojure extractor that Main passes in. The protocol is the seam; do
 not special-case languages in the class card.

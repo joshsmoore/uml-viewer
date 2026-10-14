@@ -3,6 +3,7 @@
             [uml-viewer.clojure-language.graph-clojure]
             [uml-viewer.graph :as graph]
             [uml-viewer.python-language.graph-python]
+            [uml-viewer.ruby-language.graph-ruby]
             [uml-viewer.rust-language.graph-rust]
             [uml-viewer.typescript-language.graph-typescript])
   (:gen-class))
