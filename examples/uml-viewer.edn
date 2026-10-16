@@ -142,6 +142,7 @@
   {:from :application.events, :to :engine.hit, :kind :dependency}
   {:from :adapters.sketch, :to :application.overlay, :kind :dependency}
   {:from :application.document, :to :application.overlay, :kind :dependency}
+  {:from :adapters.draw, :to :engine.route, :kind :dependency}
   {:from :application.document, :to :domain.mailbox, :kind :dependency}
   {:from :engine.route, :to :domain.geom, :kind :dependency}
   {:from :adapters.source-window, :to :javax.swing, :kind :dependency}

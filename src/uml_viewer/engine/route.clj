@@ -369,31 +369,14 @@
             (sync-stub :start s (curve/face-of from-r s))
             (sync-stub :end e (curve/face-of to-r e)))))))
 
-(defn- face-along [face p]
-  (if (#{:top :bottom} face) (first p) (second p)))
-
-(defn- set-face-along [face p v]
-  (if (#{:top :bottom} face) [v (second p)] [(first p) v]))
-
-(defn- face-limits [r face]
-  (let [pad 0.12]
-    (case face
-      (:top :bottom) [(+ (:x r) (* pad (:w r)))
-                      (- (geom/right r) (* pad (:w r)))]
-      (:left :right) [(+ (:y r) (* pad (:h r)))
-                      (- (geom/bottom r) (* pad (:h r)))])))
-
-(defn- spread-group [r face items]
-  (if (< (count items) 2)
-    items
-    (let [[lo hi] (face-limits r face)
-          ordered (vec (sort-by #(face-along face (:p %)) items))
-          n (count ordered)
-          step (/ (- hi lo) (double (inc n)))]
-      (map-indexed (fn [k it]
-                     (assoc it :p (set-face-along face (:p it)
-                                                  (+ lo (* (inc k) step)))))
-                   ordered))))
+(defn anchor-t
+  "Where along `face` of class `c` every arrow of `kind` meets it: :end
+  for arrows in, :start for arrows out. One point each, split when the
+  face carries both."
+  [c face kind]
+  (if (contains? (:shared-faces c) face)
+    (if (= :end kind) 0.35 0.65)
+    0.5))
 
 (defn- apply-ports [edges placements]
   (reduce (fn [es pl]
@@ -403,26 +386,36 @@
           (vec edges)
           placements))
 
-(defn- separate-ports [scene]
+(defn- converge-ports
+  "Every arrow into a class face ends at one entry point and every arrow
+  out of it starts at one exit point."
+  [scene]
   (let [idx (class-by-id scene)
         edges (vec (:edges scene))
-        atts (mapcat (fn [i e]
-                       (let [pts (:points e)]
-                         (when (next pts)
-                           [{:i i :which :start :id (:from e) :p (first pts)}
-                            {:i i :which :end :id (:to e) :p (last pts)}])))
-                     (range)
-                     edges)
-        placed (mapcat (fn [[[id face] group]]
-                         (let [r (:rect (idx id))]
-                           (spread-group r face group)))
-                       (->> atts
-                            (remove nil?)
-                            (map (fn [a]
-                                   (assoc a :face (curve/face-of (:rect (idx (:id a)))
-                                                               (:p a)))))
-                            (group-by (juxt :id :face))))]
-    (assoc scene :edges (apply-ports edges placed))))
+        atts (->> edges
+                  (mapcat (fn [i e]
+                            (let [pts (:points e)]
+                              (when (next pts)
+                                [{:i i :which :start :id (:from e) :p (first pts)}
+                                 {:i i :which :end :id (:to e) :p (last pts)}])))
+                          (range))
+                  (map (fn [a]
+                         (assoc a :face (curve/face-of (:rect (idx (:id a))) (:p a))))))
+        shared (->> (group-by (juxt :id :face) atts)
+                    (keep (fn [[[id face] group]]
+                            (when (= 2 (count (set (map :which group)))) [id face])))
+                    (reduce (fn [m [id face]] (update m id (fnil conj #{}) face)) {}))
+        classes (mapv #(if-let [fs (shared (:id %))] (assoc % :shared-faces fs) %)
+                      (:classes scene))
+        by-id (into {} (map (juxt :id identity) classes))
+        placed (map (fn [a]
+                      (let [c (by-id (:id a))]
+                        (assoc a :p (port-on-t (:rect c) (:face a)
+                                               (anchor-t c (:face a) (:which a))))))
+                    atts)]
+    (assoc scene
+      :classes classes
+      :edges (apply-ports edges placed))))
 
 (defn- geometric-channel [from to lr?]
   (let [a (:rect from)
@@ -512,7 +505,7 @@
                                   (map-indexed (fn [i e] [e [i (count group)]])
                                                (sort-by (juxt :from :to) group)))
                                 hop-groups))]
-    (separate-ports
+    (converge-ports
       (assoc scene
         :edges
         (mapv (fn [e]

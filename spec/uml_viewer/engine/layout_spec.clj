@@ -371,17 +371,35 @@
         (should (>= (- (second p1) (second p0)) -0.51))
         (should (<= (- (second p1) (second p0)) 0.51)))))
 
-  (it "does not start or end two arrows at the same point on a class"
+  (it "starts every arrow out of a class face at one exit point"
     (let [scene (route/route (layout/layout hub))
           round (fn [p] (mapv #(Math/round (double %)) p))
           starts (map (fn [e] [(:from e) (round (first (:points e)))])
-                      (:edges scene))
-          ends (map (fn [e] [(:to e) (round (last (:points e)))])
+                      (:edges scene))]
+      (should= 5 (count starts))
+      (should= 1 (count (distinct (map second starts))))))
+
+  (it "ends every arrow into a class face at one entry point"
+    (let [d (ir/normalize
+              {:packages
+               [{:id :p :label "P"
+                 :classes [{:id :t :name "T"} {:id :a :name "A"}
+                           {:id :b :name "B"} {:id :c :name "C"}]}]
+               :edges [{:from :a :to :t :kind :dependency}
+                       {:from :b :to :t :kind :dependency}
+                       {:from :c :to :t :kind :dependency}]})
+          scene (route/route (layout/layout d))
+          ends (map #(mapv (fn [v] (Math/round (double v))) (last (:points %)))
                     (:edges scene))]
-      (doseq [group (vals (group-by first starts))]
-        (should= (count group) (count (distinct (map second group)))))
-      (doseq [group (vals (group-by first ends))]
-        (should= (count group) (count (distinct (map second group)))))))
+      (should= 3 (count ends))
+      (should= 1 (count (distinct ends)))))
+
+  (it "splits a face into an entry and an exit when it carries both"
+    (let [c {:shared-faces #{:bottom}}]
+      (should= 0.35 (route/anchor-t c :bottom :end))
+      (should= 0.65 (route/anchor-t c :bottom :start))
+      (should= 0.5 (route/anchor-t c :top :end))
+      (should= 0.5 (route/anchor-t {} :bottom :start))))
 
   (it "does not run segments through other classes"
     (let [scene (route/route (layout/layout hub))]

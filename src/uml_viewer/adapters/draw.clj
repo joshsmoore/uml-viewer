@@ -8,6 +8,7 @@
             [uml-viewer.application.document :as document]
             [uml-viewer.engine.hit :as hit]
             [uml-viewer.engine.layout :as layout]
+            [uml-viewer.engine.route :as route]
             [uml-viewer.domain.hierarchy :as hierarchy])
   (:import [java.awt Font]
            [processing.core PFont]))
@@ -279,26 +280,23 @@
     (rgb (cond on? ink bad? violation :else muted))
     (q/text (or (:name p) "") (geom/cx r) (geom/cy r))))
 
-(defn- clamp-x [r x]
-  (max (+ (:x r) 6) (min (- (geom/right r) 6) x)))
-
 (defn- draw-port-link [[x1 y1] [x2 y2] bad?]
   (stroke-rgb (if bad? violation muted) (if bad? 2.0 1.3))
   (q/line x1 y1 x2 y2)
   (arrowhead :open [x2 y2] [x1 y1]))
 
 (defn- draw-class-ports [c hover selected]
-  (let [r (:rect c)]
+  (let [r (:rect c)
+        entry (+ (:x r) (* (:w r) (route/anchor-t c :top :end)))
+        exit (+ (:x r) (* (:w r) (route/anchor-t c :bottom :start)))]
     (doseq [p (:in-ports c)]
       (draw-port p hover selected)
-      (let [pr (:rect p)
-            x (geom/cx pr)]
-        (draw-port-link [x (geom/bottom pr)] [(clamp-x r x) (:y r)] (:violating p))))
+      (let [pr (:rect p)]
+        (draw-port-link [(geom/cx pr) (geom/bottom pr)] [entry (:y r)] (:violating p))))
     (doseq [p (:out-ports c)]
       (draw-port p hover selected)
-      (let [pr (:rect p)
-            x (geom/cx pr)]
-        (draw-port-link [(clamp-x r x) (geom/bottom r)] [x (:y pr)] (:violating p))))))
+      (let [pr (:rect p)]
+        (draw-port-link [exit (geom/bottom r)] [(geom/cx pr) (:y pr)] (:violating p))))))
 
 (defn- corner-mark [c]
   (case (some-> (:stereotype c) name)
