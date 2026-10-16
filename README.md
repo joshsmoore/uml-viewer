@@ -535,6 +535,9 @@ its `concerns`, and `lib` are roots. A constant resolves lexically,
 innermost namespace first, so `StubAdapter.new` inside `module
 RecurlyAdapter` depends on `RecurlyAdapter::StubAdapter` before any
 top-level `StubAdapter`. `RubyLLMAdapter` and `ruby_llm_adapter` agree.
+A module that only wraps files, such as `module PublicApi` with no
+`public_api.rb`, is a namespace: a reference through it draws no edge to
+whichever file happens to wrap it.
 Constants in comments, strings, heredocs, and `%w[]` literals are ignored.
 
 `class Resume < ApplicationRecord` is `:inheritance`. `include`, `extend`,

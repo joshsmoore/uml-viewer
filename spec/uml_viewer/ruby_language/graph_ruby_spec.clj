@@ -228,4 +228,30 @@
       (spit-file root "a.rb" "require_relative \"b\"\nclass A\nend\n")
       (spit-file root "b.rb" "class B\nend\n")
       (let [g (graph/scan (rb/->RubyGraph) root {:prefix ""})]
-        (should (edge? g :a :b :dependency))))))
+        (should (edge? g :a :b :dependency)))))
+
+  (it "does not bind a wrapper module to a file that only wraps it"
+    (let [root (temp-root)]
+      (spit-file root "a/public_api/foo.rb" "module PublicApi\n  class Foo\n  end\nend\n")
+      (spit-file root "b/public_api/bar.rb"
+                 "module PublicApi\n  class Bar\n    def x\n      PublicApi::Baz\n    end\n  end\nend\n")
+      (spit-file root "c/public_api/qux.rb"
+                 "module PublicApi\n  class Qux\n    def x\n      Foo\n    end\n  end\nend\n")
+      (let [g (graph/scan (rb/->RubyGraph) root {:prefix ""})]
+        (should-not (some #(= :b.public-api.bar (:from %)) (:edges g)))
+        (should (edge? g :c.public-api.qux :a.public-api.foo :dependency)))))
+
+  (it "binds a module to the file that defines it"
+    (let [root (temp-root)]
+      (spit-file root "public_api.rb" "module PublicApi\nend\n")
+      (spit-file root "public_api/foo.rb" "module PublicApi\n  class Foo\n  end\nend\n")
+      (spit-file root "user.rb" "class User\n  def x\n    PublicApi\n  end\nend\n")
+      (let [g (graph/scan (rb/->RubyGraph) root {:prefix ""})]
+        (should (edge? g :user :public-api :dependency)))))
+
+  (it "binds a second class to the file that nests it"
+    (let [root (temp-root)]
+      (spit-file root "shop/cart.rb" "module Shop\n  class Cart\n  end\n  class Extra\n  end\nend\n")
+      (spit-file root "user.rb" "class User\n  def x\n    Shop::Extra\n  end\nend\n")
+      (let [g (graph/scan (rb/->RubyGraph) root {:prefix ""})]
+        (should (edge? g :user :shop.cart :dependency))))))

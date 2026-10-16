@@ -431,12 +431,16 @@
 
 (defn- const-index
   "Constant key to class id. A file's own constant wins over a constant
-  that is only nested inside another file."
+  that is only nested inside another file. A module that only wraps a
+  file's own constant is a namespace, not that file."
   [metas]
   (let [own (into {} (map (fn [m] [(const-key (:const m)) (:id m)]) metas))
         nested (for [m metas
-                     d (get-in m [:surface :decls])]
-                 [(const-key (:segs d)) (:id m)])]
+                     :let [own-key (const-key (:const m))]
+                     d (get-in m [:surface :decls])
+                     :let [k (const-key (:segs d))]
+                     :when (not= k (take (count k) own-key))]
+                 [k (:id m)])]
     (reduce (fn [acc [k id]] (if (contains? acc k) acc (assoc acc k id)))
             own nested)))
 
