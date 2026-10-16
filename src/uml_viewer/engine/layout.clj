@@ -217,6 +217,51 @@
           (recur (into (pop q) (map #(vector % (inc r)) fresh))
                  (reduce (fn [rk k] (assoc rk k (inc r))) rank fresh)))))))
 
+(defn- down-edges
+  "Each node's successors: a parent above its subclass, a user above what it uses."
+  [ids edges]
+  (let [idset (set ids)]
+    (reduce (fn [m e]
+              (if-not (and (idset (:from e)) (idset (:to e)))
+                m
+                (if (inherit-edge? e)
+                  (update m (:to e) (fnil conj []) (:from e))
+                  (update m (:from e) (fnil conj []) (:to e)))))
+            {}
+            edges)))
+
+(defn- acyclic-out
+  "`out` without the edges that close a cycle, found depth first in `ids` order."
+  [ids out]
+  (letfn [(visit [[seen done kept] n]
+            (if (seen n)
+              [seen done kept]
+              (let [[seen done kept]
+                    (reduce (fn [[seen done kept] k]
+                              (cond
+                                (done k) [seen done (update kept n (fnil conj []) k)]
+                                (seen k) [seen done kept]
+                                :else (let [[s d kp] (visit [seen done kept] k)]
+                                        [s d (update kp n (fnil conj []) k)])))
+                            [(conj seen n) done kept]
+                            (get out n []))]
+                [seen (conj done n) kept])))]
+    (nth (reduce visit [#{} #{} {}] ids) 2)))
+
+(defn- longest-ranks
+  "Longest-path ranks, so a class sits above every class it uses."
+  [ids edges]
+  (let [out (acyclic-out ids (down-edges ids edges))
+        rank-of (fn rank-of [memo n]
+                  (if (contains? memo n)
+                    memo
+                    (let [memo (reduce rank-of memo (get out n []))
+                          below (map memo (get out n []))]
+                      (assoc memo n (if (seq below) (inc (apply max below)) 0)))))
+        height (reduce rank-of {} ids)
+        top (apply max 0 (vals height))]
+    (into {} (map (fn [id] [id (- top (height id))]) ids))))
+
 (defn- neighbors [ids edges]
   (let [idset (set ids)]
     (reduce (fn [m e]
@@ -236,6 +281,18 @@
                    (/ (double (reduce + xs)) (count xs))
                    (double (pos id 0)))))
              rank-ids)))
+
+(defn port-anchors
+  "Where each port's link meets face `r`, for port centers `xs` in order.
+  Centers that all sit over the face drop straight down; otherwise the
+  links spread evenly along it so no two arrowheads share a point."
+  [r xs]
+  (let [lo (+ (:x r) 6)
+        hi (- (geom/right r) 6)
+        n (count xs)]
+    (if (every? #(<= lo % hi) xs)
+      (vec xs)
+      (mapv #(+ lo (* (inc %) (/ (- hi lo) (double (inc n))))) (range n)))))
 
 (defn- place-port-row [c deps y]
   (when (seq deps)
@@ -305,10 +362,11 @@
         lr? (contains? #{:lr :rl} direction)
         use-level? (and (not lr?) (some #(some? (:level %)) sized))
         grouped (if use-level?
-                  (group-by #(or (:level (by-id %)) 0) ids)
+                  (let [deep (longest-ranks ids edges)]
+                    (group-by #(vector (or (:level (by-id %)) 0) (deep %)) ids))
                   (group-by ranks ids))
         rank-keys (if use-level?
-                    (sort-by - (keys grouped))
+                    (sort-by (fn [[lv r]] [(- lv) r]) (keys grouped))
                     (sort (keys grouped)))
         pos0 (into {} (map-indexed (fn [i id] [id (* i 80)]) ids))
         pos (loop [p pos0 k 0]
@@ -321,13 +379,14 @@
                           p
                           rank-keys)
                   (inc k))))
-        groups (mapv (fn [r]
+        groups (mapv (fn [i r]
                        (let [ordered (barycenter-order (grouped r) pos nbr)
                              items (mapv by-id ordered)]
-                         {:rank r
+                         {:rank i
                           :items items
                           :w (apply max 0 (map :w items))
                           :h (apply max 0 (map :h items))}))
+                     (range)
                      rank-keys)]
     (if lr?
       (let [cols (mapv (fn [g]

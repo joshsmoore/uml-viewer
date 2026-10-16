@@ -11,6 +11,16 @@
 (defn- move-rect [r dx dy]
   (geom/rect (+ (:x r) dx) (+ (:y r) dy) (:w r) (:h r)))
 
+(defn- move-ports [ports dx dy]
+  (mapv #(update % :rect move-rect dx dy) ports))
+
+(defn- move-class
+  "Class `c` and its ports, moved together."
+  [c dx dy]
+  (cond-> (update c :rect move-rect dx dy)
+    (:in-ports c) (update :in-ports move-ports dx dy)
+    (:out-ports c) (update :out-ports move-ports dx dy)))
+
 (defn- qualify [idx scene]
   (let [q #(qid idx %)]
     (-> scene
@@ -30,7 +40,7 @@
 (defn- translate [scene dx dy]
   (-> scene
       (update :packages (fn [ps] (mapv #(update % :rect move-rect dx dy) ps)))
-      (update :classes (fn [cs] (mapv #(update % :rect move-rect dx dy) cs)))
+      (update :classes (fn [cs] (mapv #(move-class % dx dy) cs)))
       (update :edges
               (fn [es]
                 (mapv (fn [e]
