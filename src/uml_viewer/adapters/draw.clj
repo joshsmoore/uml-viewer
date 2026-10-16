@@ -279,23 +279,26 @@
     (rgb (cond on? ink bad? violation :else muted))
     (q/text (or (:name p) "") (geom/cx r) (geom/cy r))))
 
+(defn- clamp-x [r x]
+  (max (+ (:x r) 6) (min (- (geom/right r) 6) x)))
+
 (defn- draw-port-link [[x1 y1] [x2 y2] bad?]
   (stroke-rgb (if bad? violation muted) (if bad? 2.0 1.3))
   (q/line x1 y1 x2 y2)
   (arrowhead :open [x2 y2] [x1 y1]))
 
 (defn- draw-class-ports [c hover selected]
-  (let [r (:rect c)
-        ins (:in-ports c)
-        outs (:out-ports c)]
-    (doseq [[p ax] (map vector ins (layout/port-anchors r (map #(geom/cx (:rect %)) ins)))]
+  (let [r (:rect c)]
+    (doseq [p (:in-ports c)]
       (draw-port p hover selected)
-      (let [pr (:rect p)]
-        (draw-port-link [(geom/cx pr) (geom/bottom pr)] [ax (:y r)] (:violating p))))
-    (doseq [[p ax] (map vector outs (layout/port-anchors r (map #(geom/cx (:rect %)) outs)))]
+      (let [pr (:rect p)
+            x (geom/cx pr)]
+        (draw-port-link [x (geom/bottom pr)] [(clamp-x r x) (:y r)] (:violating p))))
+    (doseq [p (:out-ports c)]
       (draw-port p hover selected)
-      (let [pr (:rect p)]
-        (draw-port-link [ax (geom/bottom r)] [(geom/cx pr) (:y pr)] (:violating p))))))
+      (let [pr (:rect p)
+            x (geom/cx pr)]
+        (draw-port-link [(clamp-x r x) (geom/bottom r)] [x (:y pr)] (:violating p))))))
 
 (defn- corner-mark [c]
   (case (some-> (:stereotype c) name)

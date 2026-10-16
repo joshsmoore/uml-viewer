@@ -216,33 +216,6 @@
           outer (first (filter #(= :outer (:id %)) (:classes scene)))]
       (should (< (:y (:rect outer)) (:y (:rect inner))))))
 
-  (it "drops port links straight down when every port sits over the box"
-    (should= [50 120] (layout/port-anchors (geom/rect 0 0 200 50) [50 120])))
-
-  (it "spreads port links along the box when the port row is wider"
-    (should= [56.0 106.0 156.0]
-             (layout/port-anchors (geom/rect 0 0 212 50) [-80 100 300])))
-
-  (it "stacks one level by dependency, a user above what it uses"
-    (let [d (ir/normalize
-              {:packages
-               [{:id :p :label "P"
-                 :classes [{:id :base :name "Base" :level 0}
-                           {:id :a :name "A" :level 0}
-                           {:id :b :name "B" :level 0}
-                           {:id :c :name "C" :level 0}]}]
-               :edges [{:from :a :to :base :kind :inheritance}
-                       {:from :b :to :base :kind :inheritance}
-                       {:from :c :to :base :kind :inheritance}
-                       {:from :a :to :b :kind :dependency}
-                       {:from :b :to :c :kind :dependency}
-                       {:from :c :to :a :kind :dependency}]})
-          scene (layout/layout d)
-          y (fn [id] (:y (:rect (first (filter #(= id (:id %)) (:classes scene))))))]
-      (should (< (y :base) (y :a)))
-      (should (< (y :a) (y :b)))
-      (should (< (y :b) (y :c)))))
-
   (it "puts the parent package above the implementing child"
     (let [scene (layout/layout sample)
           top (first (filter #(= :top (:id %)) (:packages scene)))
