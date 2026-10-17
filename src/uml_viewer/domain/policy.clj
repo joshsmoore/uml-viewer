@@ -454,7 +454,8 @@
            :classes (:classes graph)
            :edges (:edges graph)}
     (seq proposals) (assoc :proposals proposals)
-    proposal (assoc :proposal proposal)))
+    proposal (assoc :proposal proposal)
+    (:base-branch policy) (assoc :base-branch (:base-branch policy))))
 
 (defn- diagram-for [policy graph diagram]
   (if (= :overview (:view diagram))

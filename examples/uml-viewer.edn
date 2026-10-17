@@ -64,6 +64,7 @@
   {:from :main.ir-generator,
    :to :typescript-language.graph-typescript,
    :kind :dependency}
+  {:from :adapters.sketch, :to :application.branch-diff, :kind :dependency}
   {:from :clojure-language.source-clojure, :to :source, :kind :implements}
   {:from :adapters.draw, :to :application.document, :kind :dependency}
   {:from :rust-language.source-rust, :to :source, :kind :dependency}
@@ -96,6 +97,7 @@
   {:from :main.ir-generator, :to :ruby-language.graph-ruby, :kind :dependency}
   {:from :application.ir-generator, :to :domain.policy, :kind :dependency}
   {:from :application.events, :to :application.document, :kind :dependency}
+  {:from :application.document, :to :application.branch-diff, :kind :dependency}
   {:from :adapters.draw, :to :engine.hit, :kind :dependency}
   {:from :clojure-language.graph-clojure, :to :graph, :kind :implements}
   {:from :adapters.draw, :to :domain.geom, :kind :dependency}
@@ -117,6 +119,7 @@
   {:from :adapters.sketch, :to :adapters.source-window, :kind :dependency}
   {:from :adapters.sketch, :to :domain.mailbox, :kind :dependency}
   {:from :adapters.core, :to :adapters.sketch, :kind :dependency}
+  {:from :adapters.draw, :to :application.branch-diff, :kind :dependency}
   {:from :engine.hit, :to :engine.layout, :kind :dependency}
   {:from :application.document, :to :domain.policy, :kind :dependency}
   {:from :typescript-language.graph-typescript, :to :graph, :kind :implements}
@@ -128,6 +131,7 @@
   {:from :python-language.source-python, :to :source, :kind :dependency}
   {:from :engine.layout, :to :domain.config, :kind :dependency}
   {:from :engine.compose, :to :engine.curve, :kind :dependency}
+  {:from :application.branch-diff, :to :source, :kind :dependency}
   {:from :adapters.draw, :to :engine.layout, :kind :dependency}
   {:from :adapters.sketch, :to :engine.hit, :kind :dependency}
   {:from :application.overlay, :to :domain.ir, :kind :dependency}
@@ -176,6 +180,13 @@
    :level 3,
    :lang :clojure,
    :id :adapters.source-window}
+  {:stereotype nil,
+   :ns "uml-viewer.application.branch-diff",
+   :name "BranchDiff",
+   :file "src/uml_viewer/application/branch_diff.clj",
+   :level 2,
+   :lang :clojure,
+   :id :application.branch-diff}
   {:stereotype nil,
    :ns "uml-viewer.application.detail",
    :name "Detail",

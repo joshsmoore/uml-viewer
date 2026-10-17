@@ -187,6 +187,10 @@
   (it "reloads on r by clearing mtime"
     (should= 0 (:mtime (events/on-key (assoc (state) :mtime 99) :r))))
 
+  (it "toggles branch highlighting with B"
+    (should (:hide-changes (events/on-key (state) :b)))
+    (should-not (:hide-changes (events/on-key (assoc (state) :hide-changes true) :b))))
+
   (it "reloads on r without waiting for the agent"
     (let [next (events/on-key (assoc (state) :waiting true :mtime 99
                                      :metrics-stamp [[:old 1]]) :r)]

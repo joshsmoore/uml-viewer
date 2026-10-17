@@ -3,6 +3,7 @@
             [clojure.java.io :as io]
             [clojure.pprint :as pprint]
             [clojure.string :as str]
+            [uml-viewer.application.branch-diff :as branch-diff]
             [uml-viewer.engine.compose :as compose]
             [uml-viewer.domain.hierarchy :as hierarchy]
             [uml-viewer.engine.hit :as hit]
@@ -108,14 +109,25 @@
    :mail-seen (mail-seen-at (overlay/metrics-root path))})
 
 (defn- paint
-  "IR plus .metrics members. The class card reads this, not the scene."
-  [doc path]
+  "IR plus .metrics members and this branch's changes. The class card
+  reads this, not the scene."
+  [doc path changes]
   (let [root (overlay/metrics-root path)]
-    (overlay/apply-metrics doc (overlay/load-metrics root))))
+    (branch-diff/mark-doc (overlay/apply-metrics doc (overlay/load-metrics root))
+                          changes root)))
+
+(defn- branch-state
+  "Base-branch comparison for the project at `root`, and the git stamp
+  that tells a later frame to look again."
+  [root doc]
+  (let [gd (branch-diff/git-dir root)]
+    {:branch (when gd (branch-diff/changes root (:base-branch doc)))
+     :git-dir gd
+     :git-stamp (branch-diff/git-stamp gd)}))
 
 (def session-keys
   [:focus :proposal-id :proposal :open-layer :declutter
-   :cam-x :cam-y :zoom :selected :detail-id])
+   :cam-x :cam-y :zoom :selected :detail-id :hide-changes])
 
 (defn save-session!
   "Write the current view (depth, pan, zoom, proposal) for --restart."
@@ -141,8 +153,11 @@
       :else
       (try
         (let [root (overlay/metrics-root path)
-              doc (paint (ir/load-document path) path)]
-          {:path path
+              raw (ir/load-document path)
+              git (branch-state root raw)
+              doc (paint raw path (:branch git))]
+          (merge git
+           {:path path
            :mtime (.lastModified file)
            :metrics-stamp (overlay/metrics-stamp root)
            :doc doc
@@ -153,7 +168,7 @@
            :detail-id nil
            :cam-x 0
            :cam-y 0
-           :mail-seen (mail-seen-at root)})
+           :mail-seen (mail-seen-at root)}))
         (catch Exception e
           (log/log-exception! e (str "load " path))
           (blank-state path (or (.getMessage e) (.getSimpleName (class e)))))))))
@@ -189,7 +204,8 @@
                  :cam-y (or (:cam-y snap) 0)
                  :zoom (or (:zoom snap) 1.0)
                  :selected (:selected snap)
-                 :detail-id (:detail-id snap))
+                 :detail-id (:detail-id snap)
+                 :hide-changes (boolean (:hide-changes snap)))
           drop-missing-detail))))
 
 (defn restart-state
@@ -237,15 +253,20 @@
         (let [path (:path state)
               root (overlay/metrics-root path)
               mtime (.lastModified file)
-              stamp (overlay/metrics-stamp root)]
+              stamp (overlay/metrics-stamp root)
+              git-stamp (branch-diff/git-stamp (:git-dir state))]
           (if (and (= mtime (:mtime state))
-                   (= stamp (:metrics-stamp state)))
+                   (= stamp (:metrics-stamp state))
+                   (= git-stamp (:git-stamp state)))
             state
             (try
-              (let [doc (paint (ir/load-document path) path)
+              (let [raw (ir/load-document path)
+                    git (branch-state root raw)
+                    doc (paint raw path (:branch git))
                     focus (or (:focus state) [])]
                 (-> state
                     (dissoc :waiting)
+                    (merge git)
                     (assoc :mtime mtime
                            :metrics-stamp stamp
                            :doc doc
@@ -257,7 +278,7 @@
                     drop-missing-detail))
               (catch Exception e
                 (log/log-exception! e (str "reload " path))
-                (assoc state :mtime mtime :metrics-stamp stamp
+                (assoc state :mtime mtime :metrics-stamp stamp :git-stamp git-stamp
                        :error (.getMessage e))))))))))
 
 (defn- emit-doc [doc]

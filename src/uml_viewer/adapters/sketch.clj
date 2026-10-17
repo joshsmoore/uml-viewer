@@ -13,6 +13,7 @@
             [uml-viewer.domain.mailbox :as mailbox]
             [uml-viewer.application.overlay :as overlay]
             [uml-viewer.adapters.source-window :as source-window]
+            [uml-viewer.application.branch-diff :as branch-diff]
             [uml-viewer.domain.policy :as policy])
   (:import [java.awt Component Container Frame]
            [java.awt.event ActionListener]
@@ -499,17 +500,26 @@
           1)
         (catch Exception _ 1)))))
 
+(defn with-branch-diff
+  "`ident` plus the branch's diff of its file, when the file changed."
+  [ident]
+  (if-let [d (branch-diff/member-diff "." (:branch @!bridge) (:file ident))]
+    (assoc ident :diff d)
+    ident))
+
 (defn- detail-mouse-pressed [state event]
   (when-let [model (:model @!bridge)]
     (let [y (+ (:y event) (:scroll state 0))
           rows (detail/rows model)]
       (cond
         (detail/module-at rows y)
-        (source-window/open-member-window! (:source @!bridge) (detail/member-ident model))
+        (source-window/open-member-window! (:source @!bridge)
+                                           (with-branch-diff (detail/member-ident model)))
 
         (detail/member-at rows y)
         (source-window/open-member-window! (:source @!bridge)
-                                           (detail/member-ident model (detail/member-at rows y)))
+                                           (with-branch-diff
+                                             (detail/member-ident model (detail/member-at rows y))))
 
         (detail/rel-at rows y)
         (swap! !bridge assoc :pick (detail/rel-at rows y)))))
@@ -596,7 +606,7 @@
                 state)]
     (if-let [id (:detail-id state)]
       (when-let [model (detail/model (events/card-scene state) id)]
-        (swap! !bridge assoc :model model)
+        (swap! !bridge assoc :model model :branch (:branch state))
         (set-card-title! (class-title model)))
       (close-detail-window!))
     state))

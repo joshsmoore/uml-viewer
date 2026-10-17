@@ -4,6 +4,7 @@
             [uml-viewer.domain.config :as config]
             [uml-viewer.domain.geom :as geom]
             [uml-viewer.engine.curve :as curve]
+            [uml-viewer.application.branch-diff :as branch-diff]
             [uml-viewer.application.detail :as detail]
             [uml-viewer.application.document :as document]
             [uml-viewer.engine.hit :as hit]
@@ -23,6 +24,7 @@
 (def good [95 181 138])
 (def violation [196 42 36])
 (def violation-hot [255 64 48])
+(def changed [86 204 226])
 
 (defn- mix [a b t]
   (int (+ a (* t (- b a)) 0.5)))
@@ -353,6 +355,37 @@
        (when-let [ch (corner-mark c)]
          (draw-corner-mark r ch))))))
 
+(defn change-badge
+  "Corner label for a box this branch touched, or nil."
+  [c]
+  (cond
+    (:changed-count c) (str (:changed-count c) " changed")
+    (= :added (:changed c)) "new"
+    :else nil))
+
+(defn- draw-change-mark
+  "Cyan outline on a class this branch changed; a corner badge for a new
+  class or a box holding changes."
+  [c]
+  (let [r (:rect c)]
+    (when (:changed c)
+      (q/no-fill)
+      (stroke-rgb changed 2.6)
+      (q/rect (- (:x r) 3) (- (:y r) 3) (+ (:w r) 6) (+ (:h r) 6) 6))
+    (when-let [label (change-badge c)]
+      (q/no-stroke)
+      (rgb changed)
+      (q/text-align :right :bottom)
+      (q/text-size 11)
+      (q/text label (- (geom/right r) 6) (- (geom/bottom r) 4)))))
+
+(defn branch-line
+  "Banner naming the base branch and whether highlighting is on, or nil."
+  [state]
+  (when-let [b (:branch state)]
+    (str (branch-diff/banner b (get-in state [:doc :classes]))
+         (if (:hide-changes state) "  (hidden; B shows)" "  (B hides)"))))
+
 (def ^:private declutter-label
   {:full "Declutter none"
    :arrows "Declutter arrows"
@@ -491,7 +524,7 @@
   (rgb muted)
   (q/text-align :left :top)
   (q/text-size 12)
-  (q/text "Click a component for its card.\nDouble-click a component to open it.\nEsc (or ←) goes up a level.\nScroll to pan; Shift-scroll for horizontal.\nCtrl+/− zoom 10%; Ctrl+0 resets.\nR reloads.\nClick the real diagram above Proposals,\nor a proposal to show it."
+  (q/text "Click a component for its card.\nDouble-click a component to open it.\nEsc (or ←) goes up a level.\nScroll to pan; Shift-scroll for horizontal.\nCtrl+/− zoom 10%; Ctrl+0 resets.\nR reloads.\nB shows or hides this branch's changes.\nClick the real diagram above Proposals,\nor a proposal to show it."
           (+ x 16) y))
 
 (defn- mutation-line [m]
@@ -678,14 +711,16 @@
           :when (in-view? (:rect p) cam-x cam-y world-w world-h)]
     (draw-package-title p)))
 
-(defn- draw-scene-classes [scene sel-id hover-id hover sel cam-x cam-y world-w world-h]
+(defn- draw-scene-classes [scene sel-id hover-id hover sel cam-x cam-y world-w world-h changes?]
   (doseq [c (remove :dummy? (:classes scene))
           :when (class-visible? c cam-x cam-y world-w world-h)]
     (draw-class c
                 (= sel-id (:id c))
                 (= hover-id (:id c))
                 hover
-                sel)))
+                sel)
+    (when changes?
+      (draw-change-mark c))))
 
 (defn- draw-dep-indicators [scene]
   (doseq [ind (:dep-indicators scene)]
@@ -704,7 +739,8 @@
     (draw-scene-edges scene sel-id hover cam-x cam-y world-w world-h)
     (draw-sections scene)
     (draw-package-titles scene cam-x cam-y world-w world-h)
-    (draw-scene-classes scene sel-id hover-id hover sel cam-x cam-y world-w world-h)
+    (draw-scene-classes scene sel-id hover-id hover sel cam-x cam-y world-w world-h
+                        (not (:hide-changes state)))
     (draw-dep-indicators scene)))
 
 (defn- draw-diagram-banner [state]
@@ -734,6 +770,13 @@
                       (name (:open-layer state))))]
       (q/text (str "← " label) 12 28))))
 
+(defn- draw-branch-banner [state]
+  (when-let [text (branch-line state)]
+    (rgb changed)
+    (q/text-align :left :top)
+    (q/text-size 12)
+    (q/text text 12 48)))
+
 (defn draw-state [state]
   (apply q/background bg)
   (when (:waiting state)
@@ -744,6 +787,7 @@
   (draw-sidebar state)
   (draw-diagram-banner state)
   (draw-nav-label state)
+  (draw-branch-banner state)
   (draw-edge-popup (:hover state) (:pointer state)))
 
 (defn- detail-row-color [row]
@@ -755,6 +799,7 @@
     :field ink
     :rel ink
     :stats ink
+    :changed changed
     muted))
 
 (defn- count-ink [n]
@@ -833,6 +878,7 @@
       (q/text-size (if (= :name (:kind row)) 20 13))
       (rgb (cond
              hover? gold
+             (:changed row) changed
              (:private row) muted
              :else (detail-row-color row)))
       (q/text (:text row) x y

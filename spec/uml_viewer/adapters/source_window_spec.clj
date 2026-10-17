@@ -23,6 +23,38 @@
       (should (str/includes? doc "name='here'"))
       (should (str/includes? doc "class='hl'")))))
 
+(describe "branch diff in the source window"
+  (let [src "a\nb\nc\nd\n"
+        rows (fn [doc] (re-seq #"<tr class='([^']*)'>(?:<td class='ln'>(?:<a name='here'></a>)?([^<]*)</td>)" doc))]
+    (it "marks added lines and shows removed lines before the hunk"
+      (let [doc (source-window/source-lines->html
+                  src nil {:hunks [{:start 2 :count 1 :removed ["old b" "<x>"]}
+                                   {:start 3 :count 0 :removed ["gone"]}]})]
+        (should= [["" "1"] ["del" "−"] ["del" "−"] ["add" "2"] ["" "3"]
+                  ["del" "−"] ["" "4"] ["" "5"]]
+                 (map rest (rows doc)))
+        (should (str/includes? doc "&lt;x&gt;"))))
+
+    (it "marks every line of a new file as added"
+      (should= ["add" "add" "add" "add" "add"]
+               (map second (rows (source-window/source-lines->html
+                                   src nil {:added-file true})))))
+
+    (it "keeps the member highlight on an added line"
+      (should= ["" "hl" "" "" ""]
+               (map second (rows (source-window/source-lines->html
+                                   src 2 {:hunks [{:start 2 :count 1 :removed []}]})))))
+
+    (it "shows removed lines after the last line"
+      (should= ["" "" "" "" "" "del"]
+               (map second (rows (source-window/source-lines->html
+                                   src nil {:hunks [{:start 5 :count 0 :removed ["tail"]}]})))))
+
+    (it "names the base in the header"
+      (should (str/includes? (source-window/source->html "f.rb" src nil
+                                                          {:hunks [] :base "main"})
+                             "f.rb · diff vs main")))))
+
 (describe "open-member-window!"
   (it "chooses the ident lang and does not open a frame when source is missing"
     (let [calls (atom [])
@@ -33,14 +65,18 @@
                       (when (= "go" (:name ident))
                         {:title "T" :body "(defn go [])" :line 4}))
                     uml-viewer.adapters.source-window/show-member-window!
-                    (fn [title body line]
-                      (reset! shown [title body line]))]
+                    (fn [title body line diff]
+                      (reset! shown [title body line diff]))]
         (should-be-nil (source-window/open-member-window! :fallback {:ns "demo.a"}))
         (should= [[:fallback {:ns "demo.a"}]] @calls)
         (should-be-nil @shown)
         (should= true (source-window/open-member-window!
                         :fallback {:ns "demo.a" :name "go"}))
-        (should= ["T" "(defn go [])" 4] @shown)
+        (should= ["T" "(defn go [])" 4 nil] @shown)
+        (source-window/open-member-window!
+          :fallback {:ns "demo.a" :name "go" :diff {:hunks []}})
+        (should= [:fallback {:ns "demo.a" :name "go"}] (last @calls))
+        (should= {:hunks []} (last @shown))
         (source-window/open-member-window!
           :fallback {:ns "demo.a" :name "go" :lang :rust})
         (should= [:rust {:ns "demo.a" :name "go" :lang :rust}] (last @calls))

@@ -304,4 +304,5 @@
               (back state)
               (assoc state :selected nil))
        :r (-> state (dissoc :waiting) (assoc :mtime 0 :metrics-stamp nil))
+       :b (update state :hide-changes not)
        state))))

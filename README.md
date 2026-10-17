@@ -142,6 +142,19 @@ Rename or move of a function is a new form: overlay does not match old names.
   list ends with `… n more`. Inside a drilled view, a port (the stub for an
   arrow that leaves the view) is red when any pair through it is violating,
   and hovering it shows the same list.
+- On a branch, classes whose files changed since the branch left its base
+  get a cyan outline; a new class also says `new`, and a component says
+  `n changed` so you can drill toward the work. The base is policy
+  `:base-branch`, else the remote's default branch (`origin/HEAD`), else
+  `main`, else `master`. Changes are measured from the merge-base, so
+  later work on the base is not yours; uncommitted edits and new files
+  count. Any language works: the mark keys on each class's `:file`. The
+  banner names the base and commit, **B** hides or shows the marks, and a
+  checkout, commit, or stage refreshes them. On the base itself, or
+  outside git, nothing is marked. A changed class's card says so and tags
+  each method `· changed` or `· new`; a method spans from its start to the
+  next listed method. Clicking a member of a changed file opens its source
+  with the branch diff: added and changed lines green, removed lines red.
 - Right-click a class or component for **Refresh CRAP**, **Refresh
   Mutation**, **Refresh All Mutation**, or **Omit**. Each writes
   `to-agent.edn` and wakes the companion. CRAP runs on that class or the
@@ -294,6 +307,7 @@ tree's namespace root. `src/model.ts` becomes `bookwriter.model`
 | `:lang` | Scanner when `:sources` is absent (default `:clojure`) |
 | `:src` | Source root when `:sources` is absent |
 | `:sources` | One scan per `{:lang :root :prefix?}`. The entry `:prefix` is that tree's namespace root |
+| `:base-branch` | Branch to compare against for change highlighting. Default: `origin/HEAD`, then `main`, then `master` |
 | `:foreign` | External libs as ovals. A listed prefix collapses `quil.core` to `quil`. Unlisted externals are dropped |
 
 **Viewer Claude loop** (passed with `--append-system-prompt` to the companion session only)

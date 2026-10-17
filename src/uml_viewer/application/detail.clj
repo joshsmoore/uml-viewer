@@ -175,17 +175,25 @@
       (update :y + 12)
       (emit :heading label {})))
 
+(defn- change-tag [k]
+  (case k
+    :added "  · new"
+    :modified "  · changed"
+    ""))
+
 (defn- emit-table [acc c]
   (let [acc (update acc :y + 12)
         acc (emit acc :group-header "" {})
         acc (emit acc :col-header "" {})
         acc (emit acc :stats (:name c) (format-cells (class-metrics c)))]
     (reduce (fn [acc op]
-              (let [label (str (if (:private op) "- " "+ ") (:text op))]
+              (let [label (str (if (:private op) "- " "+ ") (:text op)
+                               (change-tag (:changed op)))]
                 (emit acc :stats label
-                      (assoc (format-cells (op-metrics op))
-                        :private (boolean (:private op))
-                        :op-name (:name op)))))
+                      (cond-> (assoc (format-cells (op-metrics op))
+                                :private (boolean (:private op))
+                                :op-name (:name op))
+                        (:changed op) (assoc :changed (:changed op))))))
             acc
             (:ops c))))
 
@@ -205,7 +213,12 @@
         acc (if-let [label (module-label model)]
               (emit acc :module label {:module true})
               acc)]
-    (emit acc :muted (package-line model c) {})))
+    (cond-> (emit acc :muted (package-line model c) {})
+      (:changed c) (emit :changed
+                         (if (= :added (:changed c))
+                           "New on this branch"
+                           "Changed on this branch")
+                         {}))))
 
 (defn- emit-banner [acc model c]
   (let [acc (if-let [t (:title model)]

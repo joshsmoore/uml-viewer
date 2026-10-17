@@ -23,6 +23,29 @@
    :foreign [:quil :javax.swing]
    :order [:source :layout :ir]})
 
+(def changed-doc
+  {:hierarchical true
+   :classes [{:id :engine.layout :name "Layout" :file "src/app/engine/layout.clj" :changed :modified}
+             {:id :engine.route :name "Route" :file "src/app/engine/route.clj" :changed :added}
+             {:id :engine.curve :name "Curve" :file "src/app/engine/curve.clj"}
+             {:id :domain.ir :name "Ir" :file "src/app/domain/ir.clj"}]
+   :edges []})
+
+(describe "branch changes on a view"
+  (it "counts changed classes under each drill box"
+    (let [boxes (get-in (hierarchy/view-at changed-doc []) [:packages 0 :classes])
+          by-id (into {} (map (juxt :id identity) boxes))]
+      (should= 2 (:changed-count (by-id :engine)))
+      (should-not-contain :changed-count (by-id :domain))
+      (should-not-contain :changed (by-id :engine))))
+
+  (it "keeps each class's own mark once drilled in"
+    (let [boxes (get-in (hierarchy/view-at changed-doc [:engine]) [:packages 0 :classes])
+          by-id (into {} (map (juxt :id identity) boxes))]
+      (should= :modified (:changed (by-id :engine.layout)))
+      (should= :added (:changed (by-id :engine.route)))
+      (should-not-contain :changed (by-id :engine.curve)))))
+
 (describe "hierarchy proposal"
   (it "groups top-level nses into named packages and marks the view as a proposal"
     (let [p (assoc policy

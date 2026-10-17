@@ -1,6 +1,7 @@
 (ns uml-viewer.application.document-spec
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.java.shell]
             [speclj.core :refer :all]
             [uml-viewer.engine.compose :as compose]
             [uml-viewer.application.document :as document]
@@ -135,6 +136,7 @@
     (let [root (io/file "target" (str "wait-mail-" (System/nanoTime)))
           edn (io/file root "diagram.edn")]
       (.mkdirs (io/file root ".metrics"))
+    (.mkdirs (io/file root "src"))
       (.mkdirs (io/file root ".uml-viewer"))
       (spit edn (pr-str {:packages [] :edges []}))
       (try
@@ -152,6 +154,7 @@
     (let [root (io/file "target" (str "load-mail-" (System/nanoTime)))
           edn (io/file root "diagram.edn")]
       (.mkdirs (io/file root ".metrics"))
+    (.mkdirs (io/file root "src"))
       (.mkdirs (io/file root ".uml-viewer"))
       (spit edn (pr-str {:packages [] :edges []}))
       (try
@@ -397,3 +400,57 @@
         (finally
           (doseq [f (reverse (file-seq root))]
             (io/delete-file f true)))))))
+
+(defn- git! [dir & args]
+  (let [r (apply clojure.java.shell/sh "git" (concat args [:dir (str dir)]))]
+    (when-not (zero? (:exit r))
+      (throw (ex-info (:err r) {:args args})))))
+
+(defn- branch-project
+  "A git project on branch `feature` whose diagram lists a.clj and b.clj;
+  the branch edits a.clj."
+  []
+  (let [root (io/file (System/getProperty "java.io.tmpdir")
+                      (str "uml-doc-branch-" (System/nanoTime)))]
+    (.mkdirs (io/file root ".metrics"))
+    (.mkdirs (io/file root "src"))
+    (spit (io/file root "src/a.clj") "(ns a)\n")
+    (spit (io/file root "src/b.clj") "(ns b)\n")
+    (spit (io/file root "diagram.edn")
+          (pr-str {:hierarchical true
+                   :classes [{:id :a :name "A" :file "src/a.clj"}
+                             {:id :b :name "B" :file "src/b.clj"}]
+                   :edges []}))
+    (git! root "init" "-q" "-b" "main")
+    (git! root "config" "user.email" "spec@example.com")
+    (git! root "config" "user.name" "Spec")
+    (git! root "add" ".")
+    (git! root "commit" "-q" "-m" "base")
+    (git! root "checkout" "-q" "-b" "feature")
+    (spit (io/file root "src/a.clj") "(ns a)\n(defn x [])\n")
+    root))
+
+(describe "branch changes"
+  (it "marks classes this branch changed and names the base"
+    (let [root (branch-project)
+          s (document/load-path (.getPath (io/file root "diagram.edn")))
+          by-id (into {} (map (juxt :id identity) (get-in s [:doc :classes])))]
+      (should= :modified (:changed (by-id :a)))
+      (should-not-contain :changed (by-id :b))
+      (should= "main" (get-in s [:branch :base]))
+      (should-not-be-nil (:git-stamp s))))
+
+  (it "drops the marks after checking out the base branch"
+    (let [root (branch-project)
+          s (document/load-path (.getPath (io/file root "diagram.edn")))]
+      (git! root "stash" "-q")
+      (Thread/sleep 1100)
+      (git! root "checkout" "-q" "main")
+      (let [next (document/maybe-reload s)]
+        (should-be-nil (:branch next))
+        (should-not (some :changed (get-in next [:doc :classes]))))))
+
+  (it "keeps the highlight toggle across a restart"
+    (let [s (document/load-path "examples/library.edn")
+          snap (select-keys (assoc s :hide-changes true) document/session-keys)]
+      (should (:hide-changes (document/restore-session s snap))))))

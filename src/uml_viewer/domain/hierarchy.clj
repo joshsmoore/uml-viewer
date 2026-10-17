@@ -162,6 +162,14 @@
     hide? (assoc :hide-members true)
     (seq kids) (assoc :contents kids)))
 
+(defn- with-changes
+  "A file box keeps its own `:changed`; a drill box counts changed classes under it."
+  [m leaf classes id drill?]
+  (if drill?
+    (let [n (count (filter #(and (:changed %) (under-id? % id)) classes))]
+      (cond-> m (pos? n) (assoc :changed-count n)))
+    (cond-> m (:changed leaf) (assoc :changed (:changed leaf)))))
+
 (defn- view-class [idx classes path id]
   (let [leaf (get idx id)
         kids (contents-of classes path id)
@@ -175,7 +183,8 @@
          :drill? drill?}
         (with-leaf-identity leaf lv)
         (with-leaf-scores leaf crap mut)
-        (with-leaf-members leaf kids hide?))))
+        (with-leaf-members leaf kids hide?)
+        (with-changes leaf classes id drill?))))
 
 (defn- collapse-end [id path idx]
   (if (:foreign (get idx id))

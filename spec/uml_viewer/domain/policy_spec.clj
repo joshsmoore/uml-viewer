@@ -139,6 +139,11 @@
       (should= [:ir] (get-in doc [:proposal :layers 0 :nses]))
       (should= [[:ir]] (:levels doc))))
 
+  (it "copies :base-branch onto a hierarchical IR only when set"
+    (let [p {:title "T" :hierarchical true :order [:ir]}]
+      (should= "develop" (:base-branch (policy/apply-policy (assoc p :base-branch "develop") graph)))
+      (should-not-contain :base-branch (policy/apply-policy p graph))))
+
   (it "copies named :proposals and stamps :level from :levels"
     (let [p {:title "T" :hierarchical true
              :levels [[:ir] [:source]]

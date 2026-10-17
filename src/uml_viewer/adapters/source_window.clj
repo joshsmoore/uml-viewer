@@ -61,27 +61,63 @@
   [line]
   (str/replace (or line "") "\t" "  "))
 
+(defn- added-lines
+  "New-file lines a diff adds or changes; every line for a new file."
+  [diff n]
+  (if (:added-file diff)
+    (set (range 1 (inc n)))
+    (into #{} (mapcat #(range (:start %) (+ (:start %) (:count %)))) (:hunks diff))))
+
+(defn- removed-before
+  "Line number to the old lines shown just above it. A pure deletion
+  sits after its start line."
+  [diff]
+  (reduce (fn [m {:keys [start removed] :as h}]
+            (if (seq removed)
+              (update m (if (zero? (:count h)) (inc start) (max 1 start))
+                      (fnil into []) removed)
+              m))
+          {}
+          (:hunks diff)))
+
+(defn- removed-rows [lines]
+  (apply str
+         (map (fn [line]
+                (str "<tr class='del'><td class='ln'>−</td>"
+                     "<td class='code'><pre>"
+                     (let [h (html-escape (expand-tabs line))] (if (str/blank? h) "&nbsp;" h))
+                     "</pre></td></tr>"))
+              lines)))
+
 (defn source-lines->html
-  ([source] (source-lines->html source nil))
-  ([source highlight-line]
-   (let [lines (str/split (or source "") #"\r?\n" -1)]
-     (->> lines
-          (map-indexed (fn [idx line]
-                         (let [n (inc idx)
-                               hl? (and highlight-line (= n highlight-line))
-                               line-html (colorize-clojure-html (expand-tabs line))
-                               visible-line (if (str/blank? line-html) "&nbsp;" line-html)]
-                           (str "<tr class='" (if hl? "hl" "") "'>"
-                                "<td class='ln'>"
-                                (when hl? "<a name='here'></a>")
-                                n "</td>"
-                                "<td class='code'><pre>" visible-line "</pre></td>"
-                                "</tr>"))))
-          (apply str)))))
+  ([source] (source-lines->html source nil nil))
+  ([source highlight-line] (source-lines->html source highlight-line nil))
+  ([source highlight-line diff]
+   (let [lines (str/split (or source "") #"\r?\n" -1)
+         added (added-lines diff (count lines))
+         removed (removed-before diff)]
+     (str
+       (->> lines
+            (map-indexed (fn [idx line]
+                           (let [n (inc idx)
+                                 hl? (and highlight-line (= n highlight-line))
+                                 classes (cond hl? "hl" (added n) "add" :else "")
+                                 line-html (colorize-clojure-html (expand-tabs line))
+                                 visible-line (if (str/blank? line-html) "&nbsp;" line-html)]
+                             (str (removed-rows (get removed n))
+                                  "<tr class='" classes "'>"
+                                  "<td class='ln'>"
+                                  (when hl? "<a name='here'></a>")
+                                  n "</td>"
+                                  "<td class='code'><pre>" visible-line "</pre></td>"
+                                  "</tr>"))))
+            (apply str))
+       (removed-rows (mapcat val (filter #(> (key %) (count lines)) removed)))))))
 
 (defn source->html
-  ([title source] (source->html title source nil))
-  ([title source highlight-line]
+  ([title source] (source->html title source nil nil))
+  ([title source highlight-line] (source->html title source highlight-line nil))
+  ([title source highlight-line diff]
    (str "<html><head><style>"
         "body{margin:0;padding:0;background:#f8fafc;color:#111827;font-family:Menlo,Monaco,Consolas,monospace;}"
         ".hdr{padding:10px 12px;background:#e5e7eb;border-bottom:1px solid #cbd5e1;font-family:sans-serif;font-size:13px;}"
@@ -91,20 +127,26 @@
         "border-right:1px solid #d1d5db;user-select:none;}"
         ".code{padding:0 12px;vertical-align:top;}"
         ".code pre{margin:0;white-space:pre;tab-size:2;}"
+        ".add td{background:#dcfce7;}"
+        ".add .ln{background:#bbf7d0;color:#166534;}"
+        ".del td{background:#fee2e2;color:#991b1b;}"
+        ".del .ln{background:#fecaca;}"
         ".hl td{background:#fde68a;}"
         ".hl .ln{background:#fcd34d;}"
         ".cmt{color:#6b7280;}"
         ".str{color:#b45309;}"
         ".kw{color:#1d4ed8;}"
         "</style></head><body>"
-        "<div class='hdr'>" (html-escape title) "</div>"
-        "<div class='src'><table>" (source-lines->html source highlight-line) "</table></div>"
+        "<div class='hdr'>" (html-escape title)
+        (when (:base diff) (str " · diff vs " (html-escape (:base diff))))
+        "</div>"
+        "<div class='src'><table>" (source-lines->html source highlight-line diff) "</table></div>"
         "</body></html>")))
 
 (defn- build-frame!
-  [title body line]
+  [title body line diff]
   (let [frame (JFrame. title)
-        editor (JEditorPane. "text/html" (source->html title body line))
+        editor (JEditorPane. "text/html" (source->html title body line diff))
         scroll (JScrollPane. editor)]
     (.setEditable editor false)
     (.setCaretPosition editor 0)
@@ -122,19 +164,22 @@
 (defn- source-for-member [source-impl ident]
   (if (:lang ident) (:lang ident) source-impl))
 
-(defn- show-member-window! [title body line]
+(defn- show-member-window! [title body line diff]
   (SwingUtilities/invokeLater
     (fn []
-      (build-frame! title body line))))
+      (build-frame! title body line diff))))
 
 (defn open-member-window!
   "Open an independent source window for a member.
   `source-impl` satisfies `LanguageSource`. `ident` is a source identity
-  map, or `ns-name` plus `member-name`."
+  map, or `ns-name` plus `member-name`. An ident `:diff` (from
+  branch-diff/file-diff, plus `:base`) shades the branch's changes."
   ([source-impl ident]
-   (when-let [{:keys [title body line]}
-              (source/member-source (source-for-member source-impl ident) ident)]
-     (show-member-window! title body line)
-     true))
+   (let [diff (:diff ident)
+         ident (dissoc ident :diff)]
+     (when-let [{:keys [title body line]}
+                (source/member-source (source-for-member source-impl ident) ident)]
+       (show-member-window! title body line diff)
+       true)))
   ([source-impl ns-name member-name]
    (open-member-window! source-impl {:ns ns-name :name member-name})))

@@ -233,6 +233,21 @@
       (should-contain "Fields" texts)
       (should-contain "depends on  B  «db»" texts)))
 
+  (it "says a class changed on this branch and tags its changed methods"
+    (let [rows (detail/rows {:class {:name "A" :changed :modified
+                                     :ops [{:name "keep" :text "keep"}
+                                           {:name "edit" :text "edit" :changed :modified}
+                                           {:name "fresh" :text "fresh" :changed :added}]}})
+          by-text (into {} (map (juxt :text identity) rows))]
+      (should= :changed (:kind (by-text "Changed on this branch")))
+      (should-not (:changed (by-text "+ keep")))
+      (should= :modified (:changed (by-text "+ edit  · changed")))
+      (should= :added (:changed (by-text "+ fresh  · new")))))
+
+  (it "says a class is new on this branch"
+    (should-contain "New on this branch"
+                    (map :text (detail/rows {:class {:name "N" :changed :added}}))))
+
   (it "omits optional sections and falls back to the package id"
     (let [orphan (detail/rows {:class {:name "Solo" :package :orphan}})
           bare (detail/rows {:class {:name "Bare"}})

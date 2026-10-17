@@ -101,6 +101,16 @@
 (describe "sketch"
   (before (reset! sketch/!bridge (empty-bridge)))
 
+  (it "attaches the branch diff to a source ident whose file changed"
+    (with-redefs [uml-viewer.application.branch-diff/member-diff
+                  (fn [root changes path]
+                    (when (and (= "." root) (= "app/a.rb" path))
+                      {:hunks [] :base (:base changes)}))]
+      (swap! sketch/!bridge assoc :branch {:base "main"})
+      (should= {:file "app/a.rb" :name "x" :diff {:hunks [] :base "main"}}
+               (sketch/with-branch-diff {:file "app/a.rb" :name "x"}))
+      (should= {:file "app/b.rb"} (sketch/with-branch-diff {:file "app/b.rb"}))))
+
   (it "treats a missing or finished applet as dead"
     (should-not (call 'live? nil))
     (should-not (call 'live? (->Finished true)))
