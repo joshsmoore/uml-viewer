@@ -96,4 +96,13 @@
           (should-be-nil (:line found)))
         (finally
           (doseq [file (reverse (file-seq root))]
-            (io/delete-file file true)))))))
+            (io/delete-file file true))))))
+
+  (it "finds a member in given text instead of the file on disk"
+    (let [impl (source/file-source ["\\(defn %s"])
+          found (source/text-source impl {:file "gone/demo.clj" :name "go"} "(ns d)\n(defn go [])\n")]
+      (should= "gone/demo.clj:2" (:title found))
+      (should= 2 (:line found))
+      (should= "(ns d)\n(defn go [])\n" (:body found))
+      (should-be-nil (source/text-source impl {:file "x" :name "nope"} "(ns d)\n"))
+      (should-be-nil (source/text-source impl {:file "x" :name "go"} nil)))))

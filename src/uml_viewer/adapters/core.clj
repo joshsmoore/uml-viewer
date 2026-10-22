@@ -9,6 +9,10 @@
        "                    :display unless the associated agent recycles\n"
        "                    the window with :uml-viewer-restart, or you press R.\n"
        "\n"
+       "  --pr N            Review GitHub pull request N without checking it\n"
+       "                    out: fetch its head and diagram it against its base.\n"
+       "                    With --restart, --pr local returns to the working tree.\n"
+       "\n"
        "  --restart         Associated agent only (via :uml-viewer-restart).\n"
        "                    New JVM, keep the existing Claude tmux session.\n"
        "                    Reloads the last view (depth, pan, zoom, proposal).\n"
@@ -16,24 +20,42 @@
        "\n"
        "  -h, --help        Print this help and exit.\n"))
 
+(defn- pr-arg [v]
+  (cond
+    (= "local" v) :local
+    (and v (re-matches #"\d+" v)) (parse-long v)
+    :else nil))
+
+(def ^:private pr-flags #{"--pr" "-pr"})
+
+(defn- without-pr [args]
+  (loop [[a & more] args acc []]
+    (cond
+      (nil? a) acc
+      (pr-flags a) (recur (rest more) acc)
+      :else (recur more (conj acc a)))))
+
 (defn parse-args
-  "EDN path and flags. `--restart` skips spawning a new agent."
+  "EDN path and flags. `--restart` skips spawning a new agent. `--pr N`
+  reviews pull request N."
   [args]
-  (let [args (keep identity args)
+  (let [args (vec (keep identity args))
         help? (boolean (some #{"--help" "-h"} args))
         restart? (boolean (some #{"--restart"} args))
-        path (->> args (remove #{"--help" "-h" "--restart"}) first)]
+        pr (some->> (partition-all 2 1 args) (some #(when (pr-flags (first %)) (second %))) pr-arg)
+        path (->> (without-pr args) (remove #{"--help" "-h" "--restart"}) first)]
     {:help? help?
      :restart? restart?
+     :pr pr
      :path (or path "examples/library.edn")}))
 
 (defn start!
   "Launch the viewer. `source-impl` satisfies `LanguageSource`."
   [source-impl & args]
-  (let [{:keys [path restart? help?]} (parse-args args)]
+  (let [{:keys [path restart? help? pr]} (parse-args args)]
     (if help?
       (do (print help-text) :help)
       (do
-        (sketch/start! path source-impl restart?)
+        (sketch/start! path source-impl restart? pr)
         (println "Watching" path)
         (println "Double-click a class for its card. Scroll to pan (Shift-scroll for horizontal). Ctrl+/− zoom; Ctrl+0 resets. R reloads. Click the real diagram above Proposals, or a proposal to show it.")))))

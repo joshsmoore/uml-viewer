@@ -9,7 +9,9 @@
             [uml-viewer.domain.ir :as ir]
             [uml-viewer.engine.layout :as layout]
             [uml-viewer.domain.log :as log]
-            [uml-viewer.domain.mailbox :as mailbox]))
+            [uml-viewer.domain.mailbox :as mailbox]
+            [uml-viewer.ruby-language.graph-ruby]
+            [uml-viewer.ruby-language.source-ruby]))
 
 (defn state []
   {:scene document/empty-scene
@@ -461,3 +463,94 @@
           restored (document/restore-session s {:only-changes true})]
       (should (:only-changes restored))
       (should= [:a] (mapv :id (get-in restored [:scene :classes]))))))
+
+(defn- spit-in [root rel text]
+  (let [f (io/file root rel)]
+    (io/make-parents f)
+    (spit f text)))
+
+(defn- pr-project
+  "A Ruby project on main whose origin holds pull request 7: it adds
+  `go` to A and deletes B. The working tree stays on main."
+  []
+  (let [root (io/file (System/getProperty "java.io.tmpdir")
+                      (str "uml-doc-pr-" (System/nanoTime)))
+        origin (io/file (str root "-origin"))]
+    (.mkdirs (io/file root ".metrics"))
+    (.mkdirs origin)
+    (spit-in root "app/models/a.rb" "class A\nend\n")
+    (spit-in root "app/models/b.rb" "class B\n  def call; end\nend\n")
+    (spit (io/file root "uml.policy.edn")
+          (pr-str {:hierarchical true :lang :ruby :src "app" :prefix "app"}))
+    (spit (io/file root "diagram.edn")
+          (pr-str {:hierarchical true :policy-file "uml.policy.edn"
+                   :classes [{:id :models.a :name "A" :file "app/models/a.rb"}
+                             {:id :models.b :name "B" :file "app/models/b.rb"}]
+                   :edges []}))
+    (git! origin "init" "-q" "--bare")
+    (git! root "init" "-q" "-b" "main")
+    (git! root "config" "user.email" "spec@example.com")
+    (git! root "config" "user.name" "Spec")
+    (git! root "add" ".")
+    (git! root "commit" "-q" "-m" "base")
+    (git! root "remote" "add" "origin" (str origin))
+    (git! root "push" "-q" "origin" "main")
+    (git! root "checkout" "-q" "-b" "pr")
+    (spit-in root "app/models/a.rb" "class A\n  def go; end\nend\n")
+    (git! root "rm" "-q" "app/models/b.rb")
+    (git! root "commit" "-q" "-am" "pr")
+    (git! root "push" "-q" "origin" "pr:refs/pull/7/head")
+    (git! root "checkout" "-q" "main")
+    (git! root "branch" "-q" "-D" "pr")
+    root))
+
+(defn- by-id [s]
+  (into {} (map (juxt :id identity)) (get-in s [:doc :classes])))
+
+(describe "pull request review"
+  (it "diagrams the PR head against its base without checking it out"
+    (let [root (pr-project)
+          s (document/load-path (.getPath (io/file root "diagram.edn")) 7)
+          a ((by-id s) :models.a)]
+      (should= 7 (:pr s))
+      (should= 7 (get-in s [:branch :pr]))
+      (should= :modified (:changed a))
+      (should= [{:name "go" :text "go" :changed :added}] (:ops a))
+      (should= :deleted (:changed ((by-id s) :models.b)))
+      (should-be-nil (:error s))
+      (should= "class A\nend\n" (slurp (io/file root "app/models/a.rb")))))
+
+  (it "falls back to the working tree when the PR cannot be read"
+    (let [root (pr-project)
+          s (document/load-path (.getPath (io/file root "diagram.edn")) 99)]
+      (should= "PR #99 could not be read" (:error s))
+      (should= 99 (:pr s))
+      (should-be-nil (:branch s))
+      (should= #{:models.a :models.b} (set (keys (by-id s))))))
+
+  (it "switches to a PR and back by mail, keeping the view toggles"
+    (let [root (pr-project)
+          s (assoc (document/load-path (.getPath (io/file root "diagram.edn")))
+                   :only-changes true)
+          on (document/apply-mail s {:id 5 :op :review-pr :pr 7})
+          off (document/apply-mail on {:id 6 :op :review-pr})]
+      (should= 7 (:pr on))
+      (should= 5 (:mail-seen on))
+      (should (:only-changes on))
+      (should= [:models] (map :id (get-in on [:scene :classes])))
+      (should-be-nil (:pr off))
+      (should-be-nil (:branch off))))
+
+  (it "restores the reviewed PR on restart unless told local"
+    (let [root (pr-project)
+          path (.getPath (io/file root "diagram.edn"))]
+      (document/save-session! (document/load-path path 7))
+      (should= 7 (:pr (document/restart-state path)))
+      (should-be-nil (:pr (document/restart-state path :local)))))
+
+  (it "re-reads the PR when the diagram reloads"
+    (let [root (pr-project)
+          s (document/load-path (.getPath (io/file root "diagram.edn")) 7)
+          next (document/maybe-reload (assoc s :mtime 0))]
+      (should= 7 (get-in next [:branch :pr]))
+      (should= :deleted (:changed ((by-id next) :models.b))))))

@@ -3,7 +3,8 @@
   Zeitwerk autoloads them, so a Rails reference needs no require."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [uml-viewer.graph :as graph]))
+            [uml-viewer.graph :as graph]
+            [uml-viewer.ruby-language.grape :as grape]))
 
 (def ^:private skip-dir-names
   #{"assets" "javascript" "views" "node_modules" "vendor" "tmp" "log"
@@ -353,14 +354,15 @@
         {:vis vis :selves selves :ops (cond-> ops op (conj op))}))))
 
 (defn ops-of
-  "Public methods, in order. A method after a bare `private` or
-  `protected` at the same indent is not public. `class << self` and
-  `def self.x` are class methods."
+  "Public methods, in order, then HTTP endpoints. A method after a bare
+  `private` or `protected` at the same indent is not public. `class <<
+  self` and `def self.x` are class methods."
   [text]
   (->> (str/split-lines text)
        (remove str/blank?)
        (reduce ops-step {:vis {} :selves #{} :ops []})
        :ops
+       (#(into % (map (fn [e] {:name (:name e) :text (:name e)})) (grape/endpoints text)))
        (reduce (fn [acc op] (if (some #(= (:name op) (:name %)) acc) acc (conj acc op))) [])))
 
 (defn read-file

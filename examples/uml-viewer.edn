@@ -96,6 +96,7 @@
   {:from :main.uml-viewer, :to :ruby-language.source-ruby, :kind :dependency}
   {:from :application.events, :to :application.detail, :kind :dependency}
   {:from :adapters.source-window, :to :source, :kind :dependency}
+  {:from :ruby-language.graph-ruby, :to :ruby-language.grape, :kind :dependency}
   {:from :domain.hierarchy, :to :domain.config, :kind :dependency}
   {:from :main.ir-generator, :to :ruby-language.graph-ruby, :kind :dependency}
   {:from :application.ir-generator, :to :domain.policy, :kind :dependency}
@@ -120,6 +121,7 @@
   {:from :application.ir-generator, :to :graph, :kind :dependency}
   {:from :engine.compose, :to :engine.hit, :kind :dependency}
   {:from :application.detail, :to :engine.hit, :kind :dependency}
+  {:from :ruby-language.source-ruby, :to :ruby-language.grape, :kind :dependency}
   {:from :adapters.sketch, :to :adapters.source-window, :kind :dependency}
   {:from :adapters.sketch, :to :domain.mailbox, :kind :dependency}
   {:from :adapters.core, :to :adapters.sketch, :kind :dependency}
@@ -371,6 +373,13 @@
    :level 0,
    :lang :clojure,
    :id :python-language.source-python}
+  {:stereotype nil,
+   :ns "uml-viewer.ruby-language.grape",
+   :name "Grape",
+   :file "src/uml_viewer/ruby_language/grape.clj",
+   :level 0,
+   :lang :clojure,
+   :id :ruby-language.grape}
   {:stereotype nil,
    :ns "uml-viewer.ruby-language.graph-ruby",
    :name "GraphRuby",

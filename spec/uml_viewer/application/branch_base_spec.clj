@@ -54,6 +54,14 @@
       (should= [{:file "app/a.rb"} {:file "lib/x.rb"} {}]
                (:classes (bb/strip-dir {:classes [{:file abs} {:file "lib/x.rb"} {}]} dir))))))
 
+(describe "tree paths"
+  (it "names the project root and trims a leading ./ or trailing /"
+    (should= "" (bb/tree-path "."))
+    (should= "" (bb/tree-path "./"))
+    (should= "app" (bb/tree-path "./app"))
+    (should= "app" (bb/tree-path "app/"))
+    (should= "lib/x" (bb/tree-path "lib/x"))))
+
 (describe "base document"
   (it "scans the fork with the policy and caches it"
     (let [[dir fork] (project-with-deletion)
@@ -80,6 +88,24 @@
       (should= (bb/cache-name policy "abc") (bb/cache-name policy "abc"))
       (should-not= (bb/cache-name policy "abc") (bb/cache-name (assoc policy :prefix "x") "abc"))
       (should-not= (bb/cache-name policy "abc") (bb/cache-name (assoc policy :lang :python) "abc"))))
+
+  (it "returns the whole diagram for a commit and keeps caches for several"
+    (let [[dir fork] (project-with-deletion)
+          _ (git! dir "commit" "-q" "-m" "drop b")
+          head (.trim (git! dir "rev-parse" "HEAD"))
+          doc (bb/commit-doc (str dir) "uml.policy.edn" head)]
+      (should (:hierarchical doc))
+      (should= ["app/models/a.rb"] (keep :file (:classes doc)))
+      (bb/commit-doc (str dir) "uml.policy.edn" fork)
+      (should= 2 (count (.listFiles (io/file dir ".uml-viewer" "base"))))))
+
+  (it "scans a policy rooted at the project itself"
+    (let [[dir fork] (project-with-deletion)
+          _ (spit (io/file dir "uml.policy.edn")
+                  (pr-str {:hierarchical true :lang :ruby :src "." :prefix "app"}))
+          doc (bb/base-doc (str dir) "uml.policy.edn" fork)]
+      (should= #{"app/models/a.rb" "app/models/b.rb"} (set (keep :file (:classes doc))))
+      (should= 1 (count (.listFiles (io/file dir ".uml-viewer" "base"))))))
 
   (it "is nil without a policy or fork"
     (let [[dir fork] (project-with-deletion)]

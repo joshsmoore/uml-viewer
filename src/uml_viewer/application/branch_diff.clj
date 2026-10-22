@@ -5,14 +5,22 @@
             [clojure.string :as str]
             [uml-viewer.source :as source]))
 
+(defn- run
+  "Stdout of `cmd` in `root`, or nil when it fails."
+  [root cmd & args]
+  (try
+    (let [{:keys [exit out]} (apply sh/sh cmd (concat args [:dir root]))]
+      (when (zero? exit)
+        out))
+    (catch Exception _ nil)))
+
+(defn- git-out [root & args]
+  (apply run root "git" args))
+
 (defn- git
   "Trimmed stdout of git in `root`, or nil when git fails."
   [root & args]
-  (try
-    (let [{:keys [exit out]} (apply sh/sh "git" (concat args [:dir root]))]
-      (when (zero? exit)
-        (str/trim out)))
-    (catch Exception _ nil)))
+  (some-> (apply git-out root args) str/trim))
 
 (defn- ref? [root ref]
   (some? (git root "rev-parse" "--verify" "--quiet" ref)))
@@ -60,6 +68,56 @@
            :sha (subs fork 0 7)
            :files (into tracked (map (fn [p] [p :added]) untracked))})))))
 
+(defn pr-ref
+  "Local ref that holds pull request `pr`'s head."
+  [pr]
+  (str "refs/uml/pr/" pr))
+
+(defn- pr-base
+  "The pull request's own base on origin (from gh), else `base`, else the
+  default base."
+  [root base pr]
+  (or (some->> (run root "gh" "pr" "view" (str pr) "--json" "baseRefName" "-q" ".baseRefName")
+               str/trim not-empty (str "origin/"))
+      base
+      (default-base root)))
+
+(defn- fetch-pr!
+  "Fetch pull request `pr`'s head into `pr-ref`, and `base` when it is
+  on origin."
+  [root base pr]
+  (apply git root "fetch" "--quiet" "origin" (str "+pull/" pr "/head:" (pr-ref pr))
+         (when (str/starts-with? base "origin/")
+           [(str "+refs/heads/" (subs base 7) ":refs/remotes/" base)])))
+
+(defn pr-changes
+  "`changes` for pull request `pr` without checking it out: its head
+  fetched from origin (or the last fetch, offline) against where it left
+  its base. Adds `:head` and `:pr`. Nil when the head is unknown."
+  [root base pr]
+  (when-let [base (pr-base root base pr)]
+    (fetch-pr! root base pr)
+    (when-let [head (git root "rev-parse" "--verify" "--quiet" (pr-ref pr))]
+      (when-let [fork (git root "merge-base" base head)]
+        {:base base
+         :fork fork
+         :sha (subs fork 0 7)
+         :head head
+         :pr pr
+         :files (parse-name-status
+                  (git root "diff" "--name-status" "--relative" fork head))}))))
+
+(defn head-text
+  "`path` as compared: at the pull request head, else in the working tree."
+  [root changes path]
+  (if-let [head (:head changes)]
+    (git-out root "show" (str head ":./" path))
+    (let [f (io/file root path)] (when (.isFile f) (slurp f)))))
+
+(defn- hunks-out [root changes path]
+  (apply git root "diff" "-U0"
+         (concat [(:fork changes)] (when (:head changes) [(:head changes)]) ["--" path])))
+
 (defn parse-diff
   "Hunks of `git diff -U0`: where each starts in the new file, how many
   new lines it has, and the old lines it removed."
@@ -96,15 +154,37 @@
   (case (get (:files changes) path)
     :added {:added-file true}
     :deleted {:deleted-file true
-              :text (git root "show" (str (:fork changes) ":./" path))}
-    :modified {:hunks (parse-diff (git root "diff" "-U0" (:fork changes) "--" path))}
+              :text (git-out root "show" (str (:fork changes) ":./" path))}
+    :modified {:hunks (parse-diff (hunks-out root changes path))}
     nil))
+
+(defn- indent [line]
+  (count (re-find #"^[ \t]*" line)))
+
+(defn- closer? [line]
+  (boolean (re-matches #"\s*(end\b.*|[}\])]+[;,]?\s*)" line)))
+
+(defn member-end
+  "Last line of the member starting at 1-based line `start` of `text`:
+  the line before the first later non-blank line indented no deeper,
+  or that line itself when it closes the member (`end`, `}`). Never
+  past `limit`."
+  [text start limit]
+  (let [src (str/split-lines text)
+        own (indent (nth src (dec start) ""))
+        stop (some (fn [n]
+                     (let [line (nth src (dec n))]
+                       (when (and (not (str/blank? line)) (<= (indent line) own))
+                         (if (closer? line) n (dec n)))))
+                   (range (inc start) (inc (count src))))]
+    (min limit (or stop (count src)))))
 
 (defn changed-ops
   "Op name to :added or :modified. An op absent from `base-text` is new;
   one whose span holds a changed line is modified. A span runs from the
-  op's start line to the next op's. Language-neutral: uses the
-  extractor registered for `lang`, and marks nothing without one."
+  op's start line to its `member-end`, and never into the next op.
+  Language-neutral: uses the extractor registered for `lang`, and marks
+  nothing without one."
   [lang base-text text lines ops]
   (if-let [impl (source/lookup lang)]
     (let [starts (->> ops
@@ -113,7 +193,8 @@
                                 [(:name op) n])))
                       (sort-by second)
                       vec)
-          ends (conj (mapv (comp dec second) (rest starts)) Long/MAX_VALUE)]
+          limits (conj (mapv (comp dec second) (rest starts)) Long/MAX_VALUE)
+          ends (mapv (fn [[_ start] limit] (member-end text start limit)) starts limits)]
       (into {}
             (keep (fn [[[nm start] end]]
                     (cond
@@ -137,19 +218,26 @@
   (if (= :added (:changed c))
     (into {} (map (fn [op] [(:name op) :added])) (:ops c))
     (let [path (:file c)
-          text (let [f (io/file root path)] (when (.isFile f) (slurp f)))
-          base-text (git root "show" (str (:fork changes) ":./" path))]
+          text (head-text root changes path)
+          base-text (git-out root "show" (str (:fork changes) ":./" path))]
       (if (and text base-text)
         (changed-ops (or (:lang c) :clojure) base-text text
-                     (parse-hunks (git root "diff" "-U0" (:fork changes) "--" path))
+                     (parse-hunks (hunks-out root changes path))
                      (:ops c))
         {}))))
 
 (defn member-diff
   "Source-window `:diff` for a card member: its file's diff and the base
-  name, or nil when the file did not change on this branch."
+  name, or nil when the file did not change on this branch. Reviewing a
+  pull request, every file also carries `:text`, its content at the head."
   [root changes path]
-  (some-> (file-diff root changes path) (assoc :base (:base changes))))
+  (let [d (file-diff root changes path)
+        pr-text (when (and (:head changes) (not (:deleted-file d)))
+                  (head-text root changes path))]
+    (cond
+      d (cond-> (assoc d :base (:base changes)) pr-text (assoc :text pr-text))
+      pr-text {:hunks [] :base (:base changes) :text pr-text}
+      :else nil)))
 
 (defn mark-classes
   "Each class whose `:file` changed gets `:changed` :added or :modified."
@@ -223,7 +311,8 @@
   [changes classes]
   (when changes
     (let [n (count (filter :changed classes))]
-      (str "vs " (:base changes) " @ " (:sha changes) " · "
+      (str (when (:pr changes) (str "PR #" (:pr changes) " "))
+           "vs " (:base changes) " @ " (:sha changes) " · "
            n (if (= 1 n) " class" " classes") " changed"))))
 
 (defn git-dir

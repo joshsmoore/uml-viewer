@@ -162,6 +162,18 @@ Rename or move of a function is a new form: overlay does not match old names.
   `· deleted`. They come from scanning the merge-base with the same
   policy, cached in `.uml-viewer/base/<commit>.edn`. Clicking a deleted
   member opens the removed file, or the current file with its diff.
+- Review a GitHub pull request without checking it out: `./uml --pr 2245`
+  (or `./uml --restart --pr 2245`), or have the companion send
+  `{:op :review-pr :pr 2245}`. The viewer fetches `pull/2245/head` into
+  `refs/uml/pr/2245`, takes the PR's base from `gh` (else `:base-branch`,
+  else the default base), scans the PR head with the diagram's policy, and
+  marks it against the merge-base exactly as for a local branch. The
+  banner starts `PR #2245`; **C** still switches between the full diagram
+  and only the changes, and source windows show files as of the PR head.
+  The working tree is never touched. **R** re-fetches. A PR that cannot be
+  read shows the working tree with an error. `--pr local` on restart, or
+  `:review-pr` without `:pr`, returns to the working tree. The reviewed PR
+  survives a restart.
 - Right-click a class or component for **Refresh CRAP**, **Refresh
   Mutation**, **Refresh All Mutation**, or **Omit**. Each writes
   `to-agent.edn` and wakes the companion. CRAP runs on that class or the
@@ -572,7 +584,12 @@ file. A superclass or mixin that is not in the project is foreign
 such as `StandardError` or `Enumerable`. `require "json"` is foreign
 `json`. Public methods are `:ops`. Methods after a bare `private` or
 `protected` are not, nor is `initialize`. `def self.x` and methods in
-`class << self` are `self.x`.
+`class << self` are `self.x`. HTTP endpoints declared as Grape (or
+Sinatra-style) verb blocks are `:ops` too, after the methods, named by
+verb and nested path: `get :callback do` inside `namespace :auth do` is
+`GET auth/callback`, `route_param :id` adds `:id`, and a bare `get do`
+is `GET /`. Their parsing lives in `uml-viewer.ruby-language.grape`, so a
+branch change inside an endpoint marks that endpoint.
 
 ```clojure
 {:lang :ruby :src "." :prefix "app"
@@ -718,7 +735,8 @@ extractor must satisfy `LanguageSource`:
 **Rust** (`uml-viewer.rust-language.source-rust`), **Python**
 (`uml-viewer.python-language.source-python`), and **Ruby**
 (`uml-viewer.ruby-language.source-ruby`) open `:file` and find the
-exported declaration, the `fn`, the `def`, or the `class`/`module`. The class card passes
+exported declaration, the `fn`, the `def`, the `class`/`module`, or (Ruby)
+the endpoint's verb block. The class card passes
 `:lang` and `:file` from the class. A class with no `:lang` still uses
 the Clojure extractor that Main passes in. The protocol is the seam; do
 not special-case languages in the class card.

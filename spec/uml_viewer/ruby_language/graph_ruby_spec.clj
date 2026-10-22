@@ -2,6 +2,7 @@
   (:require [clojure.java.io :as io]
             [speclj.core :refer :all]
             [uml-viewer.graph :as graph]
+            [uml-viewer.ruby-language.grape :as grape]
             [uml-viewer.ruby-language.graph-ruby :as rb]))
 
 (defn- spit-file [dir rel content]
@@ -108,6 +109,48 @@
                (:requires surface))
       (should= [["User"] ["ResumeSection"] ["Category"]] (:associations surface))
       (should (:concern? surface)))))
+
+(def ^:private grape-api
+  (str "module Idp\n"
+       "  class AuthApi < Grape::API\n"
+       "    helpers do\n"
+       "      def login_url\n      end\n"
+       "    end\n"
+       "    # get :commented do\n"
+       "    namespace :auth do\n"
+       "      get :login do\n        1\n      end\n"
+       "      post \"/token/refresh\" do\n      end\n"
+       "      route_param :id do\n"
+       "        delete do\n        end\n"
+       "      end\n"
+       "    end\n"
+       "    get do\n    end\n"
+       "    resources :users do\n"
+       "      get ':user_id/roles', requirements: { user_id: /\\d+/ } do |x|\n      end\n"
+       "    end\n"
+       "  end\n"
+       "end\n"))
+
+(describe "grape endpoints"
+  (it "names each verb block by its verb and nested path"
+    (should= [{:name "GET auth/login" :line 9}
+              {:name "POST auth/token/refresh" :line 12}
+              {:name "DELETE auth/:id" :line 15}
+              {:name "GET /" :line 19}
+              {:name "GET users/:user_id/roles" :line 22}]
+             (grape/endpoints grape-api)))
+
+  (it "finds nothing without a verb block"
+    (should= [] (grape/endpoints "class A\n  def get\n  end\nend\n"))
+    (should= [] (grape/endpoints "get '/x', to: 'a#b'\n"))
+    (should= [] (grape/endpoints nil)))
+
+  (it "lists endpoints as ops after the methods"
+    (should= ["login_url" "GET auth/login" "POST auth/token/refresh" "DELETE auth/:id"
+              "GET /" "GET users/:user_id/roles"]
+             (mapv :name (:ops (rb/read-file grape-api))))
+    (should= {:name "GET auth/login" :text "GET auth/login"}
+             (second (:ops (rb/read-file grape-api))))))
 
 (describe "ruby names"
   (it "camelizes, keys, and kebabs constants"

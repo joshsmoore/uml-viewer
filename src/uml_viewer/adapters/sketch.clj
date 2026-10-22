@@ -72,6 +72,8 @@
        ":queue as you handle it (rewrite the file). Oldest first. Ops are\n"
        "{:id n :op :display :path \"...\"}, {:id n :op :regen},\n"
        "{:id n :op :quit-for-restart}, {:id n :op :context ...},\n"
+       "{:id n :op :review-pr :pr 2245} (diagram GitHub PR 2245 against its\n"
+       " base without checking it out; omit :pr to return to the working tree),\n"
        "and right-click element ops:\n"
        "{:id n :op :refresh-crap :target {...}}, :refresh-mutate,\n"
        ":refresh-mutate-all, :omit. :target is {:id :ns :kind :class|:component\n"
@@ -501,7 +503,8 @@
         (catch Exception _ 1)))))
 
 (defn with-branch-diff
-  "`ident` plus the branch's diff of its file, when the file changed."
+  "`ident` plus the branch's diff of its file, when the file changed or a
+  pull request is under review."
   [ident]
   (if-let [d (branch-diff/member-diff "." (:branch @!bridge) (:file ident))]
     (assoc ident :diff d)
@@ -571,14 +574,15 @@
 
 (defn setup
   ([path] (setup path false))
-  ([path restart?]
+  ([path restart?] (setup path restart? nil))
+  ([path restart? pr]
    (q/frame-rate 30)
    (q/color-mode :rgb)
    (q/smooth)
    (q/text-font (q/create-font "SansSerif" 14 true))
    (if restart?
-     (document/restart-state path)
-     (document/waiting-state path))))
+     (document/restart-state path pr)
+     (document/waiting-state path (overlay/metrics-root path) (when-not (= :local pr) pr)))))
 
 (defn- view-dims []
   (let [w (q/width)
@@ -868,6 +872,8 @@
   ([path source-impl]
    (start! path source-impl false))
   ([path source-impl restart?]
+   (start! path source-impl restart? nil))
+  ([path source-impl restart? pr]
    (swap! !bridge assoc :source source-impl)
    (let [root (overlay/metrics-root path)]
      (if restart?
@@ -877,7 +883,7 @@
     :title "UML viewer"
     :size [window-width window-height]
     :features [:resizable]
-    :setup (fn [] (setup path restart?))
+    :setup (fn [] (setup path restart? pr))
     :update #'update-state
     :draw #'draw/draw-state
     :mouse-pressed #'on-main-press

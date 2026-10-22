@@ -379,13 +379,13 @@
   (it "starts waiting instead of loading the EDN"
     (quiet-quil
       (fn []
-        (with-redefs [document/waiting-state (fn [p] {:path p :waiting true})]
+        (with-redefs [document/waiting-state (fn [p & _] {:path p :waiting true})]
           (should= {:path "doc.edn" :waiting true} (sketch/setup "doc.edn"))))))
 
   (it "loads the EDN immediately on restart"
     (quiet-quil
       (fn []
-        (with-redefs [document/restart-state (fn [p] {:path p :loaded true})]
+        (with-redefs [document/restart-state (fn [p & _] {:path p :loaded true})]
           (should= {:path "doc.edn" :loaded true} (sketch/setup "doc.edn" true))))))
 
   (it "quits for restart when mail says so"
@@ -621,7 +621,7 @@
         (should= [:resizable] (:features @opts))
         (quiet-quil
           (fn []
-            (with-redefs [document/waiting-state (fn [p] {:path p :waiting true})
+            (with-redefs [document/waiting-state (fn [p & _] {:path p :waiting true})
                           events/on-move (fn [state x y]
                                            (reset! moved [state x y])
                                            state)

@@ -30,6 +30,8 @@ The diagram is already on screen.
   `clj -M:mutate --mutate-all` on those files. `:omit` → add `:id` to
   the current proposal's `:omit`, or to policy `:omit` on the real
   diagram, then IR.
+- To review a GitHub PR without checking it out, write `{:op :review-pr
+  :pr n}` to `to-viewer.edn`; omit `:pr` to return to the working tree.
 - `:context` mail: `{:context :real}` or `{:context :proposal :proposal-id
   id :name "..."}` is the diagram under discussion. Stay on that context
   until a later `:context` arrives.

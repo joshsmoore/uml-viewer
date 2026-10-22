@@ -34,4 +34,14 @@
 
   (it "returns nil when the member is not in the file"
     (let [file (ruby-file "class Shop\nend\n")]
-      (should-be-nil (source/member-source {:lang :ruby :file (.getPath file) :name "missing"})))))
+      (should-be-nil (source/member-source {:lang :ruby :file (.getPath file) :name "missing"}))))
+
+  (it "finds an HTTP endpoint by its verb and path"
+    (let [file (ruby-file (str "class Api < Grape::API\n"
+                               "  namespace :auth do\n"
+                               "    get :callback do\n      1\n    end\n"
+                               "  end\n"
+                               "end\n"))
+          found (source/member-source {:lang :ruby :file (.getPath file) :name "GET auth/callback"})]
+      (should= 3 (:line found))
+      (should-be-nil (source/member-source {:lang :ruby :file (.getPath file) :name "GET auth/nope"})))))

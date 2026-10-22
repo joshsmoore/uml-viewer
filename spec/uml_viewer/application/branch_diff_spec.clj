@@ -85,19 +85,53 @@
       (.delete (io/file dir "app/b.rb"))
       (let [ch (bd/changes (str dir) "main")]
         (should= :deleted (get (:files ch) "app/b.rb"))
-        (should= {:deleted-file true :text "class B\nend"}
+        (should= {:deleted-file true :text "class B\nend\n"}
                  (bd/file-diff (str dir) ch "app/b.rb"))))))
 
-(describe "changed methods"
-  (let [base "class A\n  def keep\n    1\n  end\n\n  def edit\n    2\n  end\nend\n"
-        now "class A\n  def keep\n    1\n  end\n\n  def edit\n    3\n  end\n\n  def fresh\n  end\nend\n"
-        ops [{:name "keep"} {:name "edit"} {:name "fresh"}]]
-    (it "marks a method whose lines changed and one the base lacks"
-      (should= {"edit" :modified "fresh" :added}
-               (bd/changed-ops :ruby base now #{7 9 10 11} ops)))
+(def ^:private base-ruby "class A\n  def keep\n    1\n  end\n\n  def edit\n    2\n  end\nend\n")
 
-    (it "marks nothing without an extractor for the language"
-      (should= {} (bd/changed-ops :cobol base now #{7} ops)))))
+(def ^:private now-ruby
+  "class A\n  def keep\n    1\n  end\n\n  def edit\n    3\n  end\n\n  def fresh\n  end\nend\n")
+
+(def ^:private ruby-ops [{:name "keep"} {:name "edit"} {:name "fresh"}])
+
+(describe "changed methods"
+  (it "marks a method whose lines changed and one the base lacks"
+    (should= {"edit" :modified "fresh" :added}
+             (bd/changed-ops :ruby base-ruby now-ruby #{7 9 10 11} ruby-ops)))
+
+  (it "marks nothing without an extractor for the language"
+    (should= {} (bd/changed-ops :cobol base-ruby now-ruby #{7} ruby-ops)))
+
+  (it "does not stretch the last method over code after it"
+    (let [text "class A\n  def last\n    1\n  end\n\n  get :x do\n    2\n  end\nend\n"]
+      (should= {} (bd/changed-ops :ruby text text #{7} [{:name "last"}]))
+      (should= {"last" :modified} (bd/changed-ops :ruby text text #{3} [{:name "last"}])))))
+
+(describe "changed endpoints"
+  (it "marks the Grape endpoint whose block changed"
+    (let [base "class Api < Grape::API\n  def helper\n  end\n  namespace :auth do\n    get :callback do\n      1\n    end\n  end\nend\n"
+          now "class Api < Grape::API\n  def helper\n  end\n  namespace :auth do\n    get :callback do\n      2\n    end\n  end\nend\n"]
+      (should= {"GET auth/callback" :modified}
+               (bd/changed-ops :ruby base now #{6}
+                               [{:name "helper"} {:name "GET auth/callback"}])))))
+
+(describe "member end"
+  (it "ends a Ruby method at its own end"
+    (should= 4 (bd/member-end "class A\n  def x\n    1\n  end\n  def y; end\nend\n" 2 99)))
+
+  (it "ends a one-line method on its own line"
+    (should= 2 (bd/member-end "class A\n  def x; end\n  def y; end\nend\n" 2 99)))
+
+  (it "ends a Python function before the next dedented line"
+    (should= 3 (bd/member-end "def f():\n    return 1\n\nx = 2\n" 1 99)))
+
+  (it "ends a brace body at its closing brace"
+    (should= 3 (bd/member-end "function f() {\n  return 1;\n}\nconst x = 2;\n" 1 99)))
+
+  (it "runs to the end of the file, never past the limit"
+    (should= 3 (bd/member-end "(defn f []\n  1\n  2)\n" 1 99))
+    (should= 2 (bd/member-end "(defn f []\n  1\n  2)\n" 1 2))))
 
 (describe "marking classes"
   (it "marks a class whose file changed"
@@ -236,3 +270,71 @@
 
   (it "never marks a current class from a deleted file status"
     (should= [{:file "x"}] (bd/mark-classes [{:file "x"}] {"x" :deleted}))))
+
+(defn- repo-with-pr
+  "Repo on main whose origin holds pull request 7, which edits a.rb and
+  deletes b.rb. The PR is never checked out locally."
+  []
+  (let [origin (temp-dir)
+        dir (repo-on-main)]
+    (write! dir "app/c.rb" "class C\nend\n")
+    (git! dir "add" ".")
+    (git! dir "commit" "-q" "-m" "c")
+    (git! origin "init" "-q" "--bare")
+    (git! dir "remote" "add" "origin" (str origin))
+    (git! dir "push" "-q" "origin" "main")
+    (git! dir "checkout" "-q" "-b" "pr")
+    (write! dir "app/a.rb" "class A\n  def x; end\nend\n")
+    (git! dir "rm" "-q" "app/b.rb")
+    (git! dir "commit" "-q" "-am" "pr")
+    (git! dir "push" "-q" "origin" "pr:refs/pull/7/head")
+    (git! dir "checkout" "-q" "main")
+    (git! dir "branch" "-q" "-D" "pr")
+    dir))
+
+(describe "pull request changes"
+  (it "fetches the PR head and lists its files without checking it out"
+    (let [dir (repo-with-pr)
+          ch (bd/pr-changes (str dir) nil 7)]
+      (should= 7 (:pr ch))
+      (should= "main" (:base ch))
+      (should= {"app/a.rb" :modified "app/b.rb" :deleted} (:files ch))
+      (should= (.trim (git! dir "rev-parse" "refs/uml/pr/7")) (:head ch))
+      (should= "class A\nend\n" (slurp (io/file dir "app/a.rb")))
+      (should (.isFile (io/file dir "app/b.rb")))))
+
+  (it "fetches the base too when it is on origin"
+    (let [dir (repo-with-pr)
+          ch (bd/pr-changes (str dir) "origin/main" 7)]
+      (should= "origin/main" (:base ch))
+      (should= {"app/a.rb" :modified "app/b.rb" :deleted} (:files ch))))
+
+  (it "is nil for a pull request origin does not have"
+    (should-be-nil (bd/pr-changes (str (repo-with-pr)) nil 99)))
+
+  (it "reads files and hunks at the PR head"
+    (let [dir (repo-with-pr)
+          ch (bd/pr-changes (str dir) nil 7)]
+      (should= "class A\n  def x; end\nend\n" (bd/head-text (str dir) ch "app/a.rb"))
+      (should= {:hunks [{:start 2 :count 1 :removed []}]
+                :base "main"
+                :text "class A\n  def x; end\nend\n"}
+               (bd/member-diff (str dir) ch "app/a.rb"))
+      (should= {:hunks [] :base "main" :text "class C\nend\n"}
+               (bd/member-diff (str dir) ch "app/c.rb"))
+      (should= {:deleted-file true :text "class B\nend\n" :base "main"}
+               (bd/member-diff (str dir) ch "app/b.rb"))))
+
+  (it "marks methods the PR added"
+    (let [dir (repo-with-pr)
+          ch (bd/pr-changes (str dir) nil 7)
+          doc (bd/mark-doc {:hierarchical true
+                            :classes [{:id :a :file "app/a.rb" :lang :ruby :ops [{:name "x"}]}]}
+                           ch (str dir))]
+      (should= {:id :a :file "app/a.rb" :lang :ruby :changed :modified
+                :ops [{:name "x" :changed :added}]}
+               (first (:classes doc)))))
+
+  (it "names the PR in the banner"
+    (should= "PR #7 vs main @ abc1234 · 0 classes changed"
+             (bd/banner {:pr 7 :base "main" :sha "abc1234"} []))))

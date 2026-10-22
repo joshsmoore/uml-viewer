@@ -97,4 +97,16 @@
         (source-window/open-member-window!
           :fallback {:ns "demo.a" :file "a.rb" :name "x" :diff {:deleted-file true :text "old"}})
         (should= [] @calls)
-        (should= ["a.rb (deleted)" "old" nil {:deleted-file true :text "old"}] @shown)))))
+        (should= ["a.rb (deleted)" "old" nil {:deleted-file true :text "old"}] @shown))))
+
+  (it "reads a pull request member from the diff text, not the disk"
+    (let [shown (atom nil)]
+      (with-redefs [uml-viewer.source/member-source (fn [& _] (throw (Exception. "disk read")))
+                    uml-viewer.source/text-source
+                    (fn [_ ident text]
+                      (when (= "go" (:name ident)) {:title "T" :body text :line 2}))
+                    uml-viewer.adapters.source-window/show-member-window!
+                    (fn [title body line diff] (reset! shown [title body line diff]))]
+        (source-window/open-member-window!
+          :fallback {:ns "demo.a" :file "a.rb" :name "go" :diff {:hunks [] :text "pr"}})
+        (should= ["T" "pr" 2 {:hunks [] :text "pr"}] @shown)))))

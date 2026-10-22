@@ -84,8 +84,10 @@
 (defn waiting-state
   "Blank canvas until the companion sends :display. R still loads `path`."
   ([path] (waiting-state path (overlay/metrics-root path)))
-  ([path root]
+  ([path root] (waiting-state path root nil))
+  ([path root pr]
    {:path path
+    :pr pr
     :mtime 0
     :metrics-stamp nil
     :waiting true
@@ -130,9 +132,32 @@
      :git-dir gd
      :git-stamp (branch-diff/git-stamp gd)}))
 
+(defn- pr-review
+  "Pull request `pr`'s head scanned with `local`'s policy, and its
+  comparison against its base, or nil when the PR cannot be read."
+  [root local pr]
+  (when-let [changes (branch-diff/pr-changes root (:base-branch local) pr)]
+    (when-let [doc (branch-base/commit-doc root (:policy-file local) (:head changes))]
+      (let [gd (branch-diff/git-dir root)]
+        {:raw (assoc doc :policy-file (:policy-file local))
+         :git {:branch changes
+               :git-dir gd
+               :git-stamp (branch-diff/git-stamp gd)}}))))
+
+(defn- review
+  "The raw document and branch comparison to show: the working tree
+  against its base, or pull request `pr` without checking it out. A PR
+  that cannot be read falls back to the working tree with an `:error`."
+  [root path pr]
+  (let [local (ir/load-document path)]
+    (or (when pr (pr-review root local pr))
+        {:raw local
+         :git (cond-> (branch-state root local)
+                pr (assoc :error (str "PR #" pr " could not be read")))})))
+
 (def session-keys
   [:focus :proposal-id :proposal :open-layer :declutter
-   :cam-x :cam-y :zoom :selected :detail-id :hide-changes :only-changes])
+   :cam-x :cam-y :zoom :selected :detail-id :hide-changes :only-changes :pr])
 
 (defn save-session!
   "Write the current view (depth, pan, zoom, proposal) for --restart."
@@ -146,37 +171,41 @@
   (when (and id (some #(= id (:id %)) (hierarchy/named-proposals doc)))
     id))
 
-(defn load-path [path]
-  (let [file (java.io.File. path)]
-    (cond
-      (not (.exists file))
-      (blank-state path (str "file not found: " path))
+(defn load-path
+  ([path] (load-path path nil))
+  ([path pr]
+   (let [file (java.io.File. path)]
+     (cond
+       (not (.exists file))
+       (blank-state path (str "file not found: " path))
 
-      (not (.isFile file))
-      (blank-state path (str "not a file: " path))
+       (not (.isFile file))
+       (blank-state path (str "not a file: " path))
 
-      :else
-      (try
-        (let [root (overlay/metrics-root path)
-              raw (ir/load-document path)
-              git (branch-state root raw)
-              doc (paint raw path (:branch git))]
-          (merge git
-           {:path path
-           :mtime (.lastModified file)
-           :metrics-stamp (overlay/metrics-stamp root)
-           :doc doc
-           :focus []
-           :scene (compile-view doc root [] false)
-           :selected nil
-           :hover nil
-           :detail-id nil
-           :cam-x 0
-           :cam-y 0
-           :mail-seen (mail-seen-at root)}))
-        (catch Exception e
-          (log/log-exception! e (str "load " path))
-          (blank-state path (or (.getMessage e) (.getSimpleName (class e)))))))))
+       :else
+       (try
+         (let [root (overlay/metrics-root path)
+               {:keys [raw git]} (review root path pr)
+               doc (paint raw path (:branch git))]
+           (merge
+            {:error nil}
+            git
+            {:path path
+             :pr pr
+             :mtime (.lastModified file)
+             :metrics-stamp (overlay/metrics-stamp root)
+             :doc doc
+             :focus []
+             :scene (compile-view doc root [] false)
+             :selected nil
+             :hover nil
+             :detail-id nil
+             :cam-x 0
+             :cam-y 0
+             :mail-seen (mail-seen-at root)}))
+         (catch Exception e
+           (log/log-exception! e (str "load " path))
+           (blank-state path (or (.getMessage e) (.getSimpleName (class e))))))))))
 
 (defn- drop-missing-detail [state]
   (let [id (:detail-id state)]
@@ -216,10 +245,20 @@
           drop-missing-detail))))
 
 (defn restart-state
-  "Load `path` and restore the last saved view, if any."
-  [path]
-  (restore-session (dissoc (load-path path) :waiting)
-                   (mailbox/read-session (overlay/metrics-root path))))
+  "Load `path` and restore the last saved view, if any. `pr` overrides
+  the saved pull request; `:local` returns to the working tree."
+  ([path] (restart-state path nil))
+  ([path pr]
+   (let [snap (mailbox/read-session (overlay/metrics-root path))
+         pr (if (= :local pr) nil (or pr (:pr snap)))]
+     (restore-session (dissoc (load-path path pr) :waiting) snap))))
+
+(defn review-pr
+  "Show pull request `pr`, or the working tree when nil, keeping the view
+  toggles."
+  [state pr]
+  (restore-session (dissoc (load-path (:path state) pr) :waiting)
+                   (select-keys state [:declutter :zoom :hide-changes :only-changes])))
 
 (defn- resolve-display-path [state p]
   (let [f (io/file p)]
@@ -233,10 +272,11 @@
   (let [state (assoc state :mail-seen (:id cmd))]
     (case (keyword (:op cmd))
       :display (if-let [p (:path cmd)]
-                 (-> (load-path (resolve-display-path state p))
+                 (-> (load-path (resolve-display-path state p) (:pr state))
                      (assoc :mail-seen (:id cmd))
                      (dissoc :waiting))
                  state)
+      :review-pr (assoc (review-pr state (:pr cmd)) :mail-seen (:id cmd))
       :quit-for-restart (assoc state :quit-for-restart true)
       state)))
 
@@ -267,12 +307,12 @@
                    (= git-stamp (:git-stamp state)))
             state
             (try
-              (let [raw (ir/load-document path)
-                    git (branch-state root raw)
+              (let [{:keys [raw git]} (review root path (:pr state))
                     doc (paint raw path (:branch git))
                     focus (or (:focus state) [])]
                 (-> state
                     (dissoc :waiting)
+                    (assoc :error nil)
                     (merge git)
                     (assoc :mtime mtime
                            :metrics-stamp stamp
@@ -281,8 +321,7 @@
                                                 {:proposal-id (:proposal-id state)
                                                  :declutter (:declutter state)
                                                  :open-layer (:open-layer state)
-                                                 :only-changes (:only-changes state)})
-                           :error nil)
+                                                 :only-changes (:only-changes state)}))
                     drop-missing-detail))
               (catch Exception e
                 (log/log-exception! e (str "reload " path))

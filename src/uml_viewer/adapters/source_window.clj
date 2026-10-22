@@ -171,14 +171,18 @@
   (if (:lang ident) (:lang ident) source-impl))
 
 (defn- member-or-file
-  "The member's source; for a member the branch deleted, its whole file
+  "The member's source, read from the diff's `:text` (a pull request
+  head) when present; for a member the branch deleted, its whole file
   (or, for a deleted file, the base text) so the diff shows the removal."
   [source-impl ident diff]
   (let [impl (source-for-member source-impl ident)]
     (if (:deleted-file diff)
       {:title (str (:file ident) " (deleted)") :body (:text diff) :line nil}
-      (or (source/member-source impl ident)
-          (when diff (source/member-source impl (dissoc ident :name)))))))
+      (let [find (if (:text diff)
+                   #(source/text-source impl % (:text diff))
+                   #(source/member-source impl %))]
+        (or (find ident)
+            (when diff (find (dissoc ident :name))))))))
 
 (defn- show-member-window! [title body line diff]
   (SwingUtilities/invokeLater

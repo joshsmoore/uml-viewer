@@ -83,19 +83,26 @@
      (start-line [_ text ident] (member-line-of text (:name ident) fmts))
      (title [_ ident] (file-title ident)))))
 
+(defn- from-text [impl ident lang path src]
+  (let [named? (seq (str (:name ident)))]
+    (when (or (not named?) (extract impl src ident))
+      {:title (if named?
+                (str path ":" (or (start-line impl src ident) 1))
+                path)
+       :file path
+       :body src
+       :line (when named? (start-line impl src ident))
+       :lang lang})))
+
 (defn- from-impl [impl ident lang]
   (when impl
     (when-let [path (locate impl ident)]
-      (let [src (slurp path)
-            named? (seq (str (:name ident)))]
-        (when (or (not named?) (extract impl src ident))
-          {:title (if named?
-                    (str path ":" (or (start-line impl src ident) 1))
-                    path)
-           :file path
-           :body src
-           :line (when named? (start-line impl src ident))
-           :lang lang})))))
+      (from-text impl ident lang path (slurp path)))))
+
+(defn- impl-and-lang [lang-or-impl ident]
+  (if (keyword? lang-or-impl)
+    [(lookup lang-or-impl) lang-or-impl]
+    [lang-or-impl (or (:lang ident) :clojure)]))
 
 (defn member-source
   "Locate a member. `ident` is a map with at least `:name`.
@@ -106,6 +113,13 @@
   ([ident]
    (member-source (or (:lang ident) :clojure) ident))
   ([lang-or-impl ident]
-   (if (keyword? lang-or-impl)
-     (from-impl (lookup lang-or-impl) ident lang-or-impl)
-     (from-impl lang-or-impl ident (or (:lang ident) :clojure)))))
+   (let [[impl lang] (impl-and-lang lang-or-impl ident)]
+     (from-impl impl ident lang))))
+
+(defn text-source
+  "`member-source` over `text`, the content of `(:file ident)` at some
+  commit, instead of the file on disk."
+  [lang-or-impl ident text]
+  (let [[impl lang] (impl-and-lang lang-or-impl ident)]
+    (when (and impl text)
+      (from-text impl ident lang (:file ident) text))))
