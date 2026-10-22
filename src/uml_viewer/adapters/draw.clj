@@ -25,6 +25,12 @@
 (def violation [196 42 36])
 (def violation-hot [255 64 48])
 (def changed [86 204 226])
+(def deleted [226 120 236])
+
+(defn change-ink
+  "Color for a branch change of kind `k`."
+  [k]
+  (if (= :deleted k) deleted changed))
 
 (defn- mix [a b t]
   (int (+ a (* t (- b a)) 0.5)))
@@ -361,20 +367,21 @@
   (cond
     (:changed-count c) (str (:changed-count c) " changed")
     (= :added (:changed c)) "new"
+    (= :deleted (:changed c)) "deleted"
     :else nil))
 
 (defn- draw-change-mark
-  "Cyan outline on a class this branch changed; a corner badge for a new
-  class or a box holding changes."
+  "Cyan outline on a class this branch changed, magenta on one it deleted;
+  a corner badge for a new or deleted class or a box holding changes."
   [c]
   (let [r (:rect c)]
     (when (:changed c)
       (q/no-fill)
-      (stroke-rgb changed 2.6)
+      (stroke-rgb (change-ink (:changed c)) 2.6)
       (q/rect (- (:x r) 3) (- (:y r) 3) (+ (:w r) 6) (+ (:h r) 6) 6))
     (when-let [label (change-badge c)]
       (q/no-stroke)
-      (rgb changed)
+      (rgb (change-ink (:changed c)))
       (q/text-align :right :bottom)
       (q/text-size 11)
       (q/text label (- (geom/right r) 6) (- (geom/bottom r) 4)))))
@@ -384,7 +391,8 @@
   [state]
   (when-let [b (:branch state)]
     (str (branch-diff/banner b (get-in state [:doc :classes]))
-         (if (:hide-changes state) "  (hidden; B shows)" "  (B hides)"))))
+         (if (:hide-changes state) "  (hidden; B shows)" "  (B hides)")
+         (if (:only-changes state) "  (only changes; C shows all)" "  (C shows only changes)"))))
 
 (def ^:private declutter-label
   {:full "Declutter none"
@@ -524,7 +532,7 @@
   (rgb muted)
   (q/text-align :left :top)
   (q/text-size 12)
-  (q/text "Click a component for its card.\nDouble-click a component to open it.\nEsc (or ←) goes up a level.\nScroll to pan; Shift-scroll for horizontal.\nCtrl+/− zoom 10%; Ctrl+0 resets.\nR reloads.\nB shows or hides this branch's changes.\nClick the real diagram above Proposals,\nor a proposal to show it."
+  (q/text "Click a component for its card.\nDouble-click a component to open it.\nEsc (or ←) goes up a level.\nScroll to pan; Shift-scroll for horizontal.\nCtrl+/− zoom 10%; Ctrl+0 resets.\nR reloads.\nB shows or hides this branch's changes.\nC shows only this branch's changes.\nClick the real diagram above Proposals,\nor a proposal to show it."
           (+ x 16) y))
 
 (defn- mutation-line [m]
@@ -878,7 +886,7 @@
       (q/text-size (if (= :name (:kind row)) 20 13))
       (rgb (cond
              hover? gold
-             (:changed row) changed
+             (:changed row) (change-ink (:changed row))
              (:private row) muted
              :else (detail-row-color row)))
       (q/text (:text row) x y

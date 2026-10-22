@@ -191,6 +191,12 @@
     (should (:hide-changes (events/on-key (state) :b)))
     (should-not (:hide-changes (events/on-key (assoc (state) :hide-changes true) :b))))
 
+  (it "shows only branch changes with C"
+    (should (:only-changes (events/on-key (assoc (state) :branch {:base "main"}) :c)))
+    (should-not (:only-changes (events/on-key (assoc (state) :branch {:base "main"}
+                                                     :only-changes true) :c)))
+    (should-not (:only-changes (events/on-key (state) :c))))
+
   (it "reloads on r without waiting for the agent"
     (let [next (events/on-key (assoc (state) :waiting true :mtime 99
                                      :metrics-stamp [[:old 1]]) :r)]

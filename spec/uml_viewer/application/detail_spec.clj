@@ -244,6 +244,13 @@
       (should= :modified (:changed (by-text "+ edit  · changed")))
       (should= :added (:changed (by-text "+ fresh  · new")))))
 
+  (it "says a class was deleted on this branch and tags deleted methods"
+    (let [rows (detail/rows {:class {:name "D" :changed :deleted
+                                     :ops [{:name "call" :text "call" :changed :deleted}]}})
+          by-text (into {} (map (juxt :text identity) rows))]
+      (should= :deleted (:changed (by-text "Deleted on this branch")))
+      (should= :deleted (:changed (by-text "+ call  · deleted")))))
+
   (it "says a class is new on this branch"
     (should-contain "New on this branch"
                     (map :text (detail/rows {:class {:name "N" :changed :added}}))))

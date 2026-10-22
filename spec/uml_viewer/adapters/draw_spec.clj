@@ -806,13 +806,22 @@
   (it "labels a new class and a box holding changes"
     (should= "new" (draw/change-badge {:changed :added}))
     (should= "3 changed" (draw/change-badge {:changed-count 3}))
+    (should= "deleted" (draw/change-badge {:changed :deleted}))
     (should-be-nil (draw/change-badge {:changed :modified}))
     (should-be-nil (draw/change-badge {})))
+
+  (it "colors deleted code apart from changed code"
+    (should= draw/deleted (draw/change-ink :deleted))
+    (should= draw/changed (draw/change-ink :modified))
+    (should= draw/changed (draw/change-ink :added)))
 
   (it "names the base branch and how to toggle"
     (let [s {:branch {:base "main" :sha "abc1234"}
              :doc {:classes [{:changed :added} {:id :x}]}}]
-      (should= "vs main @ abc1234 · 1 class changed  (B hides)" (draw/branch-line s))
-      (should= "vs main @ abc1234 · 1 class changed  (hidden; B shows)"
+      (should= "vs main @ abc1234 · 1 class changed  (B hides)  (C shows only changes)"
+               (draw/branch-line s))
+      (should= "vs main @ abc1234 · 1 class changed  (hidden; B shows)  (C shows only changes)"
                (draw/branch-line (assoc s :hide-changes true)))
+      (should= "vs main @ abc1234 · 1 class changed  (B hides)  (only changes; C shows all)"
+               (draw/branch-line (assoc s :only-changes true)))
       (should-be-nil (draw/branch-line {})))))

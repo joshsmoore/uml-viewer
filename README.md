@@ -149,12 +149,19 @@ Rename or move of a function is a new form: overlay does not match old names.
   `main`, else `master`. Changes are measured from the merge-base, so
   later work on the base is not yours; uncommitted edits and new files
   count. Any language works: the mark keys on each class's `:file`. The
-  banner names the base and commit, **B** hides or shows the marks, and a
+  banner names the base and commit, **B** hides or shows the marks,
+  **C** hides every class the branch did not change (and edges to them), and a
   checkout, commit, or stage refreshes them. On the base itself, or
   outside git, nothing is marked. A changed class's card says so and tags
   each method `· changed` or `· new`; a method spans from its start to the
   next listed method. Clicking a member of a changed file opens its source
   with the branch diff: added and changed lines green, removed lines red.
+  Classes and public methods the branch deleted come back as ghosts in
+  magenta: a deleted class is outlined and badged `deleted`, keeps its
+  base edges to classes still shown, and a deleted method is tagged
+  `· deleted`. They come from scanning the merge-base with the same
+  policy, cached in `.uml-viewer/base/<commit>.edn`. Clicking a deleted
+  member opens the removed file, or the current file with its diff.
 - Right-click a class or component for **Refresh CRAP**, **Refresh
   Mutation**, **Refresh All Mutation**, or **Omit**. Each writes
   `to-agent.edn` and wakes the companion. CRAP runs on that class or the

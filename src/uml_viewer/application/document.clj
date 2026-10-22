@@ -3,6 +3,7 @@
             [clojure.java.io :as io]
             [clojure.pprint :as pprint]
             [clojure.string :as str]
+            [uml-viewer.application.branch-base :as branch-base]
             [uml-viewer.application.branch-diff :as branch-diff]
             [uml-viewer.engine.compose :as compose]
             [uml-viewer.domain.hierarchy :as hierarchy]
@@ -45,13 +46,14 @@
 (defn compile-view
   "Compile the hierarchical view at `focus`, or the stacked document.
   `extra` is a boolean (legacy proposal?) or
-  `{:proposal-id :declutter :proposal}`."
+  `{:proposal-id :declutter :proposal :only-changes}`."
   ([doc] (compile-view doc (System/getProperty "user.dir") []))
   ([doc metrics-root] (compile-view doc metrics-root []))
   ([doc metrics-root focus] (compile-view doc metrics-root focus {}))
   ([doc metrics-root focus extra]
    (let [opts (compile-opts extra)
-         painted (overlay/apply-metrics doc (overlay/load-metrics metrics-root))
+         painted (cond-> (overlay/apply-metrics doc (overlay/load-metrics metrics-root))
+                   (:only-changes opts) branch-diff/changed-only)
          focus (or focus [])
          pid (compile-proposal-id opts painted)
          open-layer (:open-layer opts)]
@@ -112,9 +114,12 @@
   "IR plus .metrics members and this branch's changes. The class card
   reads this, not the scene."
   [doc path changes]
-  (let [root (overlay/metrics-root path)]
-    (branch-diff/mark-doc (overlay/apply-metrics doc (overlay/load-metrics root))
-                          changes root)))
+  (let [root (overlay/metrics-root path)
+        marked (branch-diff/mark-doc (overlay/apply-metrics doc (overlay/load-metrics root))
+                                     changes root)]
+    (cond-> marked
+      (and changes (:hierarchical doc))
+      (branch-diff/mark-deleted (branch-base/base-doc root (:policy-file doc) (:fork changes))))))
 
 (defn- branch-state
   "Base-branch comparison for the project at `root`, and the git stamp
@@ -127,7 +132,7 @@
 
 (def session-keys
   [:focus :proposal-id :proposal :open-layer :declutter
-   :cam-x :cam-y :zoom :selected :detail-id :hide-changes])
+   :cam-x :cam-y :zoom :selected :detail-id :hide-changes :only-changes])
 
 (defn save-session!
   "Write the current view (depth, pan, zoom, proposal) for --restart."
@@ -192,7 +197,8 @@
           scene (compile-view (:doc state) root focus
                               {:proposal-id pid
                                :declutter declutter
-                               :open-layer open})]
+                               :open-layer open
+                               :only-changes (:only-changes snap)})]
       (-> state
           (assoc :focus focus
                  :proposal-id pid
@@ -205,7 +211,8 @@
                  :zoom (or (:zoom snap) 1.0)
                  :selected (:selected snap)
                  :detail-id (:detail-id snap)
-                 :hide-changes (boolean (:hide-changes snap)))
+                 :hide-changes (boolean (:hide-changes snap))
+                 :only-changes (boolean (:only-changes snap)))
           drop-missing-detail))))
 
 (defn restart-state
@@ -273,7 +280,8 @@
                            :scene (compile-view doc root focus
                                                 {:proposal-id (:proposal-id state)
                                                  :declutter (:declutter state)
-                                                 :open-layer (:open-layer state)})
+                                                 :open-layer (:open-layer state)
+                                                 :only-changes (:only-changes state)})
                            :error nil)
                     drop-missing-detail))
               (catch Exception e

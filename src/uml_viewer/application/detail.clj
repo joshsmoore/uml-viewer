@@ -179,6 +179,7 @@
   (case k
     :added "  · new"
     :modified "  · changed"
+    :deleted "  · deleted"
     ""))
 
 (defn- emit-table [acc c]
@@ -215,10 +216,11 @@
               acc)]
     (cond-> (emit acc :muted (package-line model c) {})
       (:changed c) (emit :changed
-                         (if (= :added (:changed c))
-                           "New on this branch"
+                         (case (:changed c)
+                           :added "New on this branch"
+                           :deleted "Deleted on this branch"
                            "Changed on this branch")
-                         {}))))
+                         {:changed (:changed c)}))))
 
 (defn- emit-banner [acc model c]
   (let [acc (if-let [t (:title model)]

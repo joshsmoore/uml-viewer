@@ -14,7 +14,8 @@
 (defn- view-opts [state]
   {:proposal-id (:proposal-id state)
    :declutter (or (:declutter state) :full)
-   :open-layer (:open-layer state)})
+   :open-layer (:open-layer state)
+   :only-changes (:only-changes state)})
 
 (defn- rebuild [state]
   (if (and (:doc state) (:hierarchical (:doc state)))
@@ -33,6 +34,13 @@
   [state id]
   (rebuild (assoc state :proposal-id id :proposal (boolean id) :focus []
              :open-layer nil)))
+
+(defn toggle-only-changes
+  "Show only what this branch changed, or everything again. No-op off a branch."
+  [state]
+  (if (:branch state)
+    (rebuild (update state :only-changes not))
+    state))
 
 (defn cycle-declutter
   [state]
@@ -305,4 +313,5 @@
               (assoc state :selected nil))
        :r (-> state (dissoc :waiting) (assoc :mtime 0 :metrics-stamp nil))
        :b (update state :hide-changes not)
+       :c (toggle-only-changes state)
        state))))

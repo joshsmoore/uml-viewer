@@ -89,30 +89,36 @@
                      "</pre></td></tr>"))
               lines)))
 
+(defn- diff-lines->html
+  [source highlight-line diff]
+  (let [lines (str/split (or source "") #"\r?\n" -1)
+        added (added-lines diff (count lines))
+        removed (removed-before diff)]
+    (str
+      (->> lines
+           (map-indexed (fn [idx line]
+                          (let [n (inc idx)
+                                hl? (and highlight-line (= n highlight-line))
+                                classes (cond hl? "hl" (added n) "add" :else "")
+                                line-html (colorize-clojure-html (expand-tabs line))
+                                visible-line (if (str/blank? line-html) "&nbsp;" line-html)]
+                            (str (removed-rows (get removed n))
+                                 "<tr class='" classes "'>"
+                                 "<td class='ln'>"
+                                 (when hl? "<a name='here'></a>")
+                                 n "</td>"
+                                 "<td class='code'><pre>" visible-line "</pre></td>"
+                                 "</tr>"))))
+           (apply str))
+      (removed-rows (mapcat val (filter #(> (key %) (count lines)) removed))))))
+
 (defn source-lines->html
   ([source] (source-lines->html source nil nil))
   ([source highlight-line] (source-lines->html source highlight-line nil))
   ([source highlight-line diff]
-   (let [lines (str/split (or source "") #"\r?\n" -1)
-         added (added-lines diff (count lines))
-         removed (removed-before diff)]
-     (str
-       (->> lines
-            (map-indexed (fn [idx line]
-                           (let [n (inc idx)
-                                 hl? (and highlight-line (= n highlight-line))
-                                 classes (cond hl? "hl" (added n) "add" :else "")
-                                 line-html (colorize-clojure-html (expand-tabs line))
-                                 visible-line (if (str/blank? line-html) "&nbsp;" line-html)]
-                             (str (removed-rows (get removed n))
-                                  "<tr class='" classes "'>"
-                                  "<td class='ln'>"
-                                  (when hl? "<a name='here'></a>")
-                                  n "</td>"
-                                  "<td class='code'><pre>" visible-line "</pre></td>"
-                                  "</tr>"))))
-            (apply str))
-       (removed-rows (mapcat val (filter #(> (key %) (count lines)) removed)))))))
+   (if (:deleted-file diff)
+     (removed-rows (str/split (or source "") #"\r?\n" -1))
+     (diff-lines->html source highlight-line diff))))
 
 (defn source->html
   ([title source] (source->html title source nil nil))
@@ -164,6 +170,16 @@
 (defn- source-for-member [source-impl ident]
   (if (:lang ident) (:lang ident) source-impl))
 
+(defn- member-or-file
+  "The member's source; for a member the branch deleted, its whole file
+  (or, for a deleted file, the base text) so the diff shows the removal."
+  [source-impl ident diff]
+  (let [impl (source-for-member source-impl ident)]
+    (if (:deleted-file diff)
+      {:title (str (:file ident) " (deleted)") :body (:text diff) :line nil}
+      (or (source/member-source impl ident)
+          (when diff (source/member-source impl (dissoc ident :name)))))))
+
 (defn- show-member-window! [title body line diff]
   (SwingUtilities/invokeLater
     (fn []
@@ -177,8 +193,7 @@
   ([source-impl ident]
    (let [diff (:diff ident)
          ident (dissoc ident :diff)]
-     (when-let [{:keys [title body line]}
-                (source/member-source (source-for-member source-impl ident) ident)]
+     (when-let [{:keys [title body line]} (member-or-file source-impl ident diff)]
        (show-member-window! title body line diff)
        true)))
   ([source-impl ns-name member-name]

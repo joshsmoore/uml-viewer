@@ -29,15 +29,15 @@
         (= (str "origin/" branch) base))))
 
 (defn parse-name-status
-  "Path to :added or :modified from `git diff --name-status`. A rename
-  counts as a change to the new path; a deletion has no class to mark."
+  "Path to :added, :modified, or :deleted from `git diff --name-status`.
+  A rename counts as a change to the new path."
   [out]
   (into {}
         (keep (fn [line]
                 (let [[status & paths] (str/split line #"\t")]
                   (case (first status)
                     \A [(last paths) :added]
-                    \D nil
+                    \D [(last paths) :deleted]
                     nil nil
                     [(last paths) :modified]))))
         (str/split-lines (or out ""))))
@@ -90,10 +90,13 @@
 
 (defn file-diff
   "Diff of `path` since the branch left its base: `{:added-file true}`
-  for a new file, `{:hunks [...]}` for a changed one, nil otherwise."
+  for a new file, `{:deleted-file true :text base}` for a removed one,
+  `{:hunks [...]}` for a changed one, nil otherwise."
   [root changes path]
   (case (get (:files changes) path)
     :added {:added-file true}
+    :deleted {:deleted-file true
+              :text (git root "show" (str (:fork changes) ":./" path))}
     :modified {:hunks (parse-diff (git root "diff" "-U0" (:fork changes) "--" path))}
     nil))
 
@@ -152,7 +155,7 @@
   "Each class whose `:file` changed gets `:changed` :added or :modified."
   [classes files]
   (mapv (fn [c]
-          (if-let [k (get files (:file c))]
+          (if-let [k (#{:added :modified} (get files (:file c)))]
             (assoc c :changed k)
             c))
         classes))
@@ -167,6 +170,53 @@
               (mapv #(if (:changed %) (mark-ops % (op-marks % changes root)) %)
                     (mark-classes cs (:files changes)))))
     doc))
+
+(defn- deleted [m]
+  (assoc m :changed :deleted))
+
+(defn- deleted-class [c]
+  (cond-> (deleted c)
+    (:ops c) (update :ops #(mapv deleted %))))
+
+(defn- with-deleted-ops
+  "Changed class `c` plus the ops its base version had and it lacks."
+  [c base-c]
+  (let [names (set (map :name (:ops c)))
+        gone (remove #(names (:name %)) (:ops base-c))]
+    (cond-> c
+      (and (:changed c) (seq gone)) (update :ops (fnil into []) (map deleted gone)))))
+
+(defn mark-deleted
+  "Add to `doc` what `base` had and the branch removed: classes and ops
+  marked `:changed :deleted`, and base edges that touch a deleted class."
+  [doc base]
+  (if (seq (:classes base))
+    (let [base-by-id (into {} (map (juxt :id identity)) (:classes base))
+          current (set (map :id (:classes doc)))
+          gone (into [] (comp (remove :foreign) (remove #(current (:id %))) (map deleted-class))
+                     (:classes base))
+          gone-ids (set (map :id gone))
+          shown (into current gone-ids)
+          known-edges (set (:edges doc))
+          edges (filter #(and (or (gone-ids (:from %)) (gone-ids (:to %)))
+                              (shown (:from %)) (shown (:to %))
+                              (not (known-edges %)))
+                        (:edges base))]
+      (-> doc
+          (update :classes #(-> (mapv (fn [c] (with-deleted-ops c (base-by-id (:id c)))) %)
+                                (into gone)))
+          (update :edges (fnil into []) edges)))
+    doc))
+
+(defn changed-only
+  "`doc` keeping only classes this branch changed, foreign libs, and the
+  edges between what is left."
+  [doc]
+  (let [classes (filterv #(or (:changed %) (:foreign %)) (:classes doc))
+        ids (set (map :id classes))]
+    (assoc doc
+           :classes classes
+           :edges (filterv #(and (ids (:from %)) (ids (:to %))) (:edges doc)))))
 
 (defn banner
   "One line naming the base and how many `classes` changed, or nil."

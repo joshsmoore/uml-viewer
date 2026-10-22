@@ -453,4 +453,11 @@
   (it "keeps the highlight toggle across a restart"
     (let [s (document/load-path "examples/library.edn")
           snap (select-keys (assoc s :hide-changes true) document/session-keys)]
-      (should (:hide-changes (document/restore-session s snap))))))
+      (should (:hide-changes (document/restore-session s snap)))))
+
+  (it "restores only-changes and filters the scene to changed classes"
+    (let [root (branch-project)
+          s (document/load-path (.getPath (io/file root "diagram.edn")))
+          restored (document/restore-session s {:only-changes true})]
+      (should (:only-changes restored))
+      (should= [:a] (mapv :id (get-in restored [:scene :classes]))))))

@@ -33,10 +33,11 @@
     dir))
 
 (describe "branch file changes"
-  (it "reads added, modified, and renamed paths; deletions drop out"
+  (it "reads added, modified, renamed, and deleted paths"
     (should= {"app/a.rb" :modified
               "app/new.rb" :added
-              "app/moved.rb" :modified}
+              "app/moved.rb" :modified
+              "app/gone.rb" :deleted}
              (bd/parse-name-status
                "M\tapp/a.rb\nA\tapp/new.rb\nR087\tapp/old.rb\tapp/moved.rb\nD\tapp/gone.rb\n")))
 
@@ -76,7 +77,16 @@
         (should-be-nil (bd/file-diff (str dir) ch "app/b.rb"))
         (should-be-nil (bd/file-diff (str dir) nil "app/a.rb"))
         (should= {:added-file true :base "main"} (bd/member-diff (str dir) ch "app/c.rb"))
-        (should-be-nil (bd/member-diff (str dir) ch "app/b.rb"))))))
+        (should-be-nil (bd/member-diff (str dir) ch "app/b.rb")))))
+
+  (it "returns the base text of a deleted file"
+    (let [dir (repo-on-main)]
+      (git! dir "checkout" "-q" "-b" "feature")
+      (.delete (io/file dir "app/b.rb"))
+      (let [ch (bd/changes (str dir) "main")]
+        (should= :deleted (get (:files ch) "app/b.rb"))
+        (should= {:deleted-file true :text "class B\nend"}
+                 (bd/file-diff (str dir) ch "app/b.rb"))))))
 
 (describe "changed methods"
   (let [base "class A\n  def keep\n    1\n  end\n\n  def edit\n    2\n  end\nend\n"
@@ -178,4 +188,51 @@
       (Thread/sleep 1100)
       (git! dir "checkout" "-q" "-b" "feature")
       (should-not= before (bd/git-stamp gd))
-      (should-be-nil (bd/git-stamp nil)))))
+      (should-be-nil (bd/git-stamp nil))))
+
+  (it "keeps only changed classes, foreign libs, and edges between them"
+    (let [doc {:classes [{:id :app.a :changed :modified}
+                         {:id :app.b}
+                         {:id :app.c :changed :added}
+                         {:id :quil :foreign true}]
+               :edges [{:from :app.a :to :app.c}
+                       {:from :app.a :to :app.b}
+                       {:from :app.c :to :quil}]}
+          only (bd/changed-only doc)]
+      (should= [:app.a :app.c :quil] (mapv :id (:classes only)))
+      (should= [{:from :app.a :to :app.c} {:from :app.c :to :quil}] (:edges only)))))
+
+(def ^:private current-doc
+  {:classes [{:id :a :changed :modified :ops [{:name "keep"}]}
+             {:id :c :ops [{:name "same"}]}]
+   :edges [{:from :a :to :c}]})
+
+(def ^:private base-doc
+  {:classes [{:id :a :ops [{:name "keep"} {:name "gone"}]}
+             {:id :b :file "app/b.rb" :ops [{:name "call"}]}
+             {:id :c :ops [{:name "same"} {:name "moved"}]}
+             {:id :quil :foreign true}]
+   :edges [{:from :a :to :c} {:from :a :to :b} {:from :b :to :quil}]})
+
+(defn- marked-by-id []
+  (into {} (map (juxt :id identity)) (:classes (bd/mark-deleted current-doc base-doc))))
+
+(describe "deleted classes and methods"
+  (it "adds a deleted class with its methods marked deleted"
+    (should= :deleted (:changed ((marked-by-id) :b)))
+    (should= [{:name "call" :changed :deleted}] (:ops ((marked-by-id) :b)))
+    (should-not-contain :quil (marked-by-id)))
+
+  (it "adds deleted methods to a changed class only"
+    (should= [{:name "keep"} {:name "gone" :changed :deleted}] (:ops ((marked-by-id) :a)))
+    (should= [{:name "same"}] (:ops ((marked-by-id) :c))))
+
+  (it "adds base edges between a deleted class and a shown one"
+    (should= [{:from :a :to :c} {:from :a :to :b}]
+             (:edges (bd/mark-deleted current-doc base-doc))))
+
+  (it "leaves the document alone without a base"
+    (should= current-doc (bd/mark-deleted current-doc nil)))
+
+  (it "never marks a current class from a deleted file status"
+    (should= [{:file "x"}] (bd/mark-classes [{:file "x"}] {"x" :deleted}))))

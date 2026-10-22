@@ -23,37 +23,45 @@
       (should (str/includes? doc "name='here'"))
       (should (str/includes? doc "class='hl'")))))
 
+(def ^:private src "a\nb\nc\nd\n")
+
+(defn- rows [doc]
+  (re-seq #"<tr class='([^']*)'>(?:<td class='ln'>(?:<a name='here'></a>)?([^<]*)</td>)" doc))
+
 (describe "branch diff in the source window"
-  (let [src "a\nb\nc\nd\n"
-        rows (fn [doc] (re-seq #"<tr class='([^']*)'>(?:<td class='ln'>(?:<a name='here'></a>)?([^<]*)</td>)" doc))]
-    (it "marks added lines and shows removed lines before the hunk"
-      (let [doc (source-window/source-lines->html
-                  src nil {:hunks [{:start 2 :count 1 :removed ["old b" "<x>"]}
-                                   {:start 3 :count 0 :removed ["gone"]}]})]
-        (should= [["" "1"] ["del" "−"] ["del" "−"] ["add" "2"] ["" "3"]
-                  ["del" "−"] ["" "4"] ["" "5"]]
-                 (map rest (rows doc)))
-        (should (str/includes? doc "&lt;x&gt;"))))
+  (it "marks added lines and shows removed lines before the hunk"
+    (let [doc (source-window/source-lines->html
+                src nil {:hunks [{:start 2 :count 1 :removed ["old b" "<x>"]}
+                                 {:start 3 :count 0 :removed ["gone"]}]})]
+      (should= [["" "1"] ["del" "−"] ["del" "−"] ["add" "2"] ["" "3"]
+                ["del" "−"] ["" "4"] ["" "5"]]
+               (map rest (rows doc)))
+      (should (str/includes? doc "&lt;x&gt;"))))
 
-    (it "marks every line of a new file as added"
-      (should= ["add" "add" "add" "add" "add"]
-               (map second (rows (source-window/source-lines->html
-                                   src nil {:added-file true})))))
+  (it "marks every line of a new file as added"
+    (should= ["add" "add" "add" "add" "add"]
+             (map second (rows (source-window/source-lines->html
+                                 src nil {:added-file true})))))
 
-    (it "keeps the member highlight on an added line"
-      (should= ["" "hl" "" "" ""]
-               (map second (rows (source-window/source-lines->html
-                                   src 2 {:hunks [{:start 2 :count 1 :removed []}]})))))
+  (it "keeps the member highlight on an added line"
+    (should= ["" "hl" "" "" ""]
+             (map second (rows (source-window/source-lines->html
+                                 src 2 {:hunks [{:start 2 :count 1 :removed []}]})))))
 
-    (it "shows removed lines after the last line"
-      (should= ["" "" "" "" "" "del"]
-               (map second (rows (source-window/source-lines->html
-                                   src nil {:hunks [{:start 5 :count 0 :removed ["tail"]}]})))))
+  (it "shows removed lines after the last line"
+    (should= ["" "" "" "" "" "del"]
+             (map second (rows (source-window/source-lines->html
+                                 src nil {:hunks [{:start 5 :count 0 :removed ["tail"]}]})))))
 
-    (it "names the base in the header"
-      (should (str/includes? (source-window/source->html "f.rb" src nil
-                                                          {:hunks [] :base "main"})
-                             "f.rb · diff vs main")))))
+  (it "marks every line of a deleted file as removed"
+    (should= ["del" "del" "del" "del" "del"]
+             (map second (rows (source-window/source-lines->html
+                                 src nil {:deleted-file true})))))
+
+  (it "names the base in the header"
+    (should (str/includes? (source-window/source->html "f.rb" src nil
+                                                        {:hunks [] :base "main"})
+                           "f.rb · diff vs main"))))
 
 (describe "open-member-window!"
   (it "chooses the ident lang and does not open a frame when source is missing"
@@ -81,4 +89,12 @@
           :fallback {:ns "demo.a" :name "go" :lang :rust})
         (should= [:rust {:ns "demo.a" :name "go" :lang :rust}] (last @calls))
         (source-window/open-member-window! :fallback "demo.a" "go")
-        (should= [:fallback {:ns "demo.a" :name "go"}] (last @calls))))))
+        (should= [:fallback {:ns "demo.a" :name "go"}] (last @calls))
+        (source-window/open-member-window!
+          :fallback {:ns "demo.a" :name "gone" :diff {:hunks []}})
+        (should= [:fallback {:ns "demo.a"}] (last @calls))
+        (reset! calls [])
+        (source-window/open-member-window!
+          :fallback {:ns "demo.a" :file "a.rb" :name "x" :diff {:deleted-file true :text "old"}})
+        (should= [] @calls)
+        (should= ["a.rb (deleted)" "old" nil {:deleted-file true :text "old"}] @shown)))))
