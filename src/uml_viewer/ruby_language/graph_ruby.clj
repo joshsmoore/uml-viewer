@@ -345,18 +345,18 @@
       (re-find #"^class\s*<<\s*self\b" trimmed)
       {:vis vis :selves (conj selves k) :ops ops}
 
-      (re-find #"^(?:private|protected)\s+def\s" trimmed)
-      {:vis vis :selves selves :ops ops}
-
       :else
-      (let [op (when (contains? #{nil :public} (get vis k))
-                 (def-op line (some #(< % k) selves)))]
-        {:vis vis :selves selves :ops (cond-> ops op (conj op))}))))
+      (let [inline? (re-find #"^(?:private|protected)\s+def\s" trimmed)
+            op (def-op (cond-> line inline? (str/replace-first #"(?:private|protected)\s+" ""))
+                       (some #(< % k) selves))
+            private? (or inline? (not (contains? #{nil :public} (get vis k))))]
+        {:vis vis :selves selves
+         :ops (cond-> ops op (conj (cond-> op private? (assoc :private true))))}))))
 
 (defn ops-of
-  "Public methods, in order, then HTTP endpoints. A method after a bare
-  `private` or `protected` at the same indent is not public. `class <<
-  self` and `def self.x` are class methods."
+  "Methods, in order, then HTTP endpoints. A method after a bare
+  `private` or `protected` at the same indent, or written `private def`,
+  is `:private`. `class << self` and `def self.x` are class methods."
   [text]
   (->> (str/split-lines text)
        (remove str/blank?)

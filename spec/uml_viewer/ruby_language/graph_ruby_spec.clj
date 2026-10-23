@@ -64,7 +64,7 @@
                (map :segs (:decls surface)))
       (should= ["ApplicationRecord"] (:super (second (:decls surface))))))
 
-  (it "lists public methods, skipping private, protected, and initialize"
+  (it "lists methods, marking private and protected ones, skipping initialize"
     (let [surface (rb/read-file
                     (str "class Shop\n"
                          "  def initialize; end\n"
@@ -87,8 +87,12 @@
       (should= [{:name "open?" :text "open?"}
                 {:name "build" :text "self.build"}
                 {:name "find" :text "self.find"}
+                {:name "hidden_class" :text "self.hidden_class" :private true}
                 {:name "total!" :text "total!"}
-                {:name "visible" :text "visible"}]
+                {:name "inline" :text "inline" :private true}
+                {:name "guarded" :text "guarded" :private true}
+                {:name "visible" :text "visible"}
+                {:name "secret" :text "secret" :private true}]
                (:ops surface))))
 
   (it "reads mixins, requires, and association targets"

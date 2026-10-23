@@ -104,19 +104,22 @@ launch_viewer() {
 }
 
 if [[ "\${1:-}" == "-h" || "\${1:-}" == "--help" ]]; then
-  echo "usage: ./uml [--restart]" >&2
+  echo "usage: ./uml [--restart] [--pr N|local]" >&2
   echo "  (no args)   fresh window; companion writes the diagram" >&2
   echo "  --restart   new JVM, same companion; restores last view" >&2
+  echo "  --pr N      review GitHub PR N without checking it out" >&2
+  echo "  --pr local  with --restart, back to the working tree" >&2
   echo "  The viewer detaches; exceptions go to \$LOG." >&2
   exit 0
 fi
 
 if [[ "\${1:-}" == "--restart" ]]; then
+  shift
   edn="\$(edn_path)"
   if [[ -n "\$edn" ]]; then
-    launch_viewer --restart "\$edn"
+    launch_viewer --restart "\$@" "\$edn"
   else
-    launch_viewer --restart
+    launch_viewer --restart "\$@"
   fi
   exit 0
 fi

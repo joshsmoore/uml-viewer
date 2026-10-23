@@ -299,27 +299,74 @@
   (let [flat (str/replace header #"\s+" " ")]
     (second (re-find #"\)\s*->\s*([A-Za-z_][A-Za-z0-9_]*)\s*:" flat))))
 
+(defn- dunder? [name]
+  (boolean (re-matches #"__\w*__" name)))
+
 (defn- defs-of [text holes]
   (let [m (re-matcher #"(?m)^(?:async[ \t]+def|def|class)[ \t]+([A-Za-z_][A-Za-z0-9_]*)" text)]
     (loop [acc []]
       (if (.find m)
         (let [i (.start m)
               name (.group m 1)]
-          (recur (if (or (in-hole? holes i) (str/starts-with? name "_"))
+          (recur (if (or (in-hole? holes i) (dunder? name))
                    acc
                    (let [header (subs text i (statement-end text i))]
-                     (conj acc (if (str/starts-with? (str/triml header) "class")
-                                 {:name name :kind :class :bases (bases-of header)}
-                                 {:name name :kind :function :return (return-of header)}))))))
+                     (conj acc (cond-> (if (str/starts-with? (str/triml header) "class")
+                                         {:name name :kind :class :bases (bases-of header)}
+                                         {:name name :kind :function :return (return-of header)})
+                                 (str/starts-with? name "_") (assoc :private true)))))))
         acc))))
 
+(defn- lines-at [text]
+  (let [m (re-matcher #"(?m)^.*$" text)]
+    (loop [acc []]
+      (if (.find m)
+        (recur (conj acc [(.start m) (.group m)]))
+        acc))))
+
+(defn- line-indent [line]
+  (count (re-find #"^[ \t]*" line)))
+
+(defn- method-step [holes {:keys [cls body found] :as st} [i line]]
+  (cond
+    (or (str/blank? line) (in-hole? holes i)) st
+    (zero? (line-indent line))
+    {:cls (second (re-find #"^class[ \t]+([A-Za-z_][A-Za-z0-9_]*)" line))
+     :body nil
+     :found found}
+    (nil? cls) st
+    :else
+    (let [k (line-indent line)
+          body (or body k)
+          nm (when (= k body)
+               (second (re-find #"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)" line)))]
+      {:cls cls
+       :body body
+       :found (cond-> found
+                (and nm (not (dunder? nm)))
+                (conj (cond-> {:class cls :name nm}
+                        (some #(str/starts-with? % "_") [cls nm]) (assoc :private true))))})))
+
+(defn- methods-of
+  "Methods directly inside each module-level class, as `{:class :name}`
+  in order. Dunder methods are skipped; a `_name` method, or any method
+  of a `_Name` class, is `:private`."
+  [text holes]
+  (:found (reduce (partial method-step holes)
+                  {:cls nil :body nil :found []}
+                  (lines-at text))))
+
 (defn read-module
-  "Module surface of Python `source`: imports, and public module-level
-  functions and classes."
+  "Module surface of Python `source`: imports, public module-level
+  functions and classes (`:defs`), every module-level one including
+  `_private` (`:all-defs`), and the methods of those classes."
   [source]
-  (let [{:keys [text holes]} (mask-comments source)]
+  (let [{:keys [text holes]} (mask-comments source)
+        all-defs (defs-of text holes)]
     {:imports (imports-of text holes)
-     :defs (defs-of text holes)}))
+     :defs (filterv (complement :private) all-defs)
+     :all-defs all-defs
+     :methods (methods-of text holes)}))
 
 (defn- module-relative [file root]
   (let [root (.getCanonicalFile (io/file root))
@@ -446,8 +493,20 @@
                         (every? marker? (:bases c))))
                  classes))))
 
-(defn- op-maps [defs]
-  (mapv (fn [d] {:name (:name d) :text (:name d)}) defs))
+(defn- op-map [n private?]
+  (cond-> {:name n :text n} private? (assoc :private true)))
+
+(defn- op-maps
+  "Each def as an op; a class is followed by its methods as
+  `Class.method`. `_private` ones are `:private`."
+  [defs methods]
+  (let [by-class (group-by :class methods)]
+    (into []
+          (mapcat (fn [d]
+                    (cons (op-map (:name d) (:private d))
+                          (for [m (get by-class (:name d))]
+                            (op-map (str (:name d) "." (:name m)) (:private m))))))
+          defs)))
 
 (defn- analyze [surface ns-str init? by-ns by-rel]
   (let [package (package-of ns-str init?)
@@ -480,7 +539,7 @@
      :foreigns foreigns
      :inherits inherits
      :impls impls
-     :ops (op-maps (:defs surface))
+     :ops (op-maps (:all-defs surface) (:methods surface))
      :stereotype (when (interface-module? (:defs surface)) :interface)}))
 
 (defn- file-meta [file root prefix ns-prefix]

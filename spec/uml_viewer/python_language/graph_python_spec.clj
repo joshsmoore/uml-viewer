@@ -82,6 +82,35 @@
                          "import os\n"))]
       (should= ["os"] (mapcat #(map :name (:modules %)) (:imports surface))))))
 
+(describe "python class methods"
+  (it "lists methods directly inside module-level classes, marking _private ones"
+    (let [surface (py/read-module
+                    (str "class PartnersView:\n"
+                         "    \"\"\"Docs.\n\n    def not_a_method(self):\n    \"\"\"\n"
+                         "\n"
+                         "    @staticmethod\n"
+                         "    def create(body):\n"
+                         "        def inner():\n            pass\n"
+                         "        return inner\n"
+                         "\n"
+                         "    async def fetch(self):\n        pass\n"
+                         "\n"
+                         "    def _private(self):\n        pass\n"
+                         "\n"
+                         "    def __init__(self):\n        pass\n"
+                         "\n"
+                         "def helper():\n    def nested():\n        pass\n"
+                         "\n"
+                         "class _Hidden:\n    def run(self):\n        pass\n"))]
+      (should= [{:class "PartnersView" :name "create"}
+                {:class "PartnersView" :name "fetch"}
+                {:class "PartnersView" :name "_private" :private true}
+                {:class "_Hidden" :name "run" :private true}]
+               (:methods surface))))
+
+  (it "finds nothing outside a class"
+    (should= [] (:methods (py/read-module "def f():\n    def g():\n        pass\n")))))
+
 (describe "python graph"
   (it "scans a package, skips tests, and marks inheritance and protocols"
     (let [dir (temp-root)]
@@ -126,8 +155,9 @@
         (should (str/ends-with? (:file (by-id :model)) "src/app/model.py"))
         (should= "Model" (:name (by-id :model)))
         (should= "Kennel" (:name (by-id :dogs.kennel)))
-        (should= ["Animal" "walk"] (map :name (:ops (by-id :model))))
-        (should= ["Fs"] (map :name (:ops (by-id :fs))))
+        (should= ["Animal" "Animal.speak" "walk" "_hidden"] (map :name (:ops (by-id :model))))
+        (should= [nil nil nil true] (map :private (:ops (by-id :model))))
+        (should= ["Fs" "Fs.read"] (map :name (:ops (by-id :fs))))
         (should= :interface (:stereotype (by-id :fs)))
         (should-be-nil (:stereotype (by-id :model)))
         (should (contains? edges [:app :model :dependency]))

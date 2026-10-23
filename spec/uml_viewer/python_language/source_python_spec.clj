@@ -40,4 +40,18 @@
                                          :file (.getPath file)
                                          :ns "app.model"})]
         (should= (.getPath file) (:file found))
-        (should-be-nil (:line found))))))
+        (should-be-nil (:line found)))))
+
+  (it "finds Class.method after its class, not an earlier def of the same name"
+    (let [dir (io/file (System/getProperty "java.io.tmpdir")
+                       (str "uml-py-method-" (System/nanoTime)))
+          file (io/file dir "views.py")]
+      (io/make-parents file)
+      (spit file (str "def create():\n    pass\n\n"
+                      "class PartnersView:\n    def create(self, body):\n        pass\n"))
+      (let [at #(source/member-source {:lang :python :file (.getPath file) :name %})]
+        (should= 5 (:line (at "PartnersView.create")))
+        (should= 1 (:line (at "create")))
+        (should= 4 (:line (at "PartnersView")))
+        (should-be-nil (at "PartnersView.missing"))
+        (should-be-nil (at "Missing.create"))))))

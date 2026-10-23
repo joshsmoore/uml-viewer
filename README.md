@@ -196,8 +196,8 @@ Rename or move of a function is a new form: overlay does not match old names.
 - The class card names the **module** (`:ns`). Click it to open that source
   file at the top. Hover a member to highlight it; click it to open the same
   file at the defn. See [Source extractors](#source-extractors).
-- Methods on the card are `+` public and `-` private. `defn-` is not drawn on
-  the class box.
+- Methods on the card are `+` public and `-` private. Private methods
+  (`defn-`, Ruby `private`, Python `_name`) are not drawn on the class box.
 - Abstract classes show a white **α** in the upper-right; interfaces a white
   **I**. Names of rectangles that are not classes (components/layers,
   interfaces, enumerations, package banners) are italic. Foreign libraries
@@ -550,7 +550,10 @@ collapses it). `class Dog(Animal)` is `:inheritance` when `Animal` is a
 project module. A base of `Protocol` or `ABC` is `:implements`.
 `def load() -> Animal` is `:implements` when `Animal` is a bare imported
 project name. `list[Animal]` is not. Public module-level functions and
-classes are `:ops`. A module whose public classes are only `Protocol` or
+classes are `:ops`; each class is followed by its methods as
+`Class.method` (`PartnersView.create`). A `_name` function, method, or
+class (and every method of a `_Name` class) is `:private`. Dunder
+methods, nested functions, and `def` inside a docstring are skipped. A module whose public classes are only `Protocol` or
 `ABC` bases, with no public functions, is `:stereotype :interface`.
 
 **Ruby** (`uml-viewer.ruby-language.graph-ruby`) emits one class per `.rb`
@@ -582,8 +585,9 @@ Polymorphic associations are skipped. `require_relative` depends on that
 file. A superclass or mixin that is not in the project is foreign
 (`ActiveRecord::Base` is `active-record.base`), unless it is Ruby core
 such as `StandardError` or `Enumerable`. `require "json"` is foreign
-`json`. Public methods are `:ops`. Methods after a bare `private` or
-`protected` are not, nor is `initialize`. `def self.x` and methods in
+`json`. Methods are `:ops`. Methods after a bare `private` or
+`protected`, or written `private def`, are `:private`; `initialize` is
+skipped. `def self.x` and methods in
 `class << self` are `self.x`. HTTP endpoints declared as Grape (or
 Sinatra-style) verb blocks are `:ops` too, after the methods, named by
 verb and nested path: `get :callback do` inside `namespace :auth do` is
