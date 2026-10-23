@@ -235,7 +235,8 @@
 (defn leaf-of
   "The class-level pair an arrow stands for."
   [e]
-  {:from (:from e) :to (:to e) :kind (:kind e) :violating (boolean (:violating e))})
+  (cond-> {:from (:from e) :to (:to e) :kind (:kind e) :violating (boolean (:violating e))}
+    (:changed e) (assoc :changed (:changed e))))
 
 (defn re-end
   "`e` drawn between `from` and `to`, keeping the class pairs it carries."
@@ -272,6 +273,17 @@
   {:classes (with-levels (mapv #(dissoc % :level) classes) ranks)
    :edges (mark-violations edges ranks)})
 
+(defn merged-change
+  "Branch change of an arrow bundling `es`: `:added` or `:deleted` when
+  every bundled edge is, `:modified` when only some changed, else nil."
+  [es]
+  (let [ks (set (map :changed es))]
+    (cond
+      (= #{:added} ks) :added
+      (= #{:deleted} ks) :deleted
+      (some some? ks) :modified
+      :else nil)))
+
 (defn merge-edges
   "Keep the strongest edge for each [from to] pair.
   A surviving :dependency is violating if any bundled edge was."
@@ -280,8 +292,11 @@
        (group-by (juxt :from :to))
        vals
        (mapv (fn [es]
-               (let [best (apply max-key #(kind-rank (:kind %)) es)]
-                 (cond-> (dissoc best :violating)
+               (let [best (apply max-key #(kind-rank (:kind %)) es)
+                     change (merged-change (mapcat #(or (:leaves %) [%]) es))]
+                 (cond-> (dissoc best :violating :changed)
+                   change (assoc :changed change)
+
                    (and (= :dependency (:kind best))
                         (some :violating es))
                    (assoc :violating true)

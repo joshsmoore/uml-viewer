@@ -23,9 +23,10 @@
   (or (seq (:deps e))
       (seq (:leaves e))
       (when (and (:from e) (:to e))
-        [{:from (:from e)
-          :to (:to e)
-          :violating (boolean (:violating e))}])))
+        [(cond-> {:from (:from e)
+                  :to (:to e)
+                  :violating (boolean (:violating e))}
+           (:changed e) (assoc :changed (:changed e)))])))
 
 (defn- edge-paths [e]
   (or (seq (:strokes e))

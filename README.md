@@ -150,7 +150,8 @@ Rename or move of a function is a new form: overlay does not match old names.
   later work on the base is not yours; uncommitted edits and new files
   count. Any language works: the mark keys on each class's `:file`. The
   banner names the base and commit, **B** hides or shows the marks,
-  **C** hides every class the branch did not change (and edges to them), and a
+  **C** hides every class the branch did not change (and edges to them),
+  except the far end of a new or removed arrow, which stays dimmed, and a
   checkout, commit, or stage refreshes them. On the base itself, or
   outside git, nothing is marked. A changed class's card says so and tags
   each method `· changed` or `· new`; a method spans from its start to the
@@ -162,6 +163,11 @@ Rename or move of a function is a new form: overlay does not match old names.
   `· deleted`. They come from scanning the merge-base with the same
   policy, cached in `.uml-viewer/base/<commit>.edn`. Clicking a deleted
   member opens the removed file, or the current file with its diff.
+  Arrows are compared with the merge-base too: a new relationship is
+  drawn cyan, a removed one comes back magenta, and an arrow between
+  components that bundles some changed pairs is cyan. Hovering lists
+  each pair with `· new`, `· removed`, or `· changed`. **B** hides these
+  colors with the other marks.
 - Review a GitHub pull request without checking it out: `./uml --pr 2245`
   (or `./uml --restart --pr 2245`), or have the companion send
   `{:op :review-pr :pr 2245}`. The viewer fetches `pull/2245/head` into
@@ -550,11 +556,17 @@ collapses it). `class Dog(Animal)` is `:inheritance` when `Animal` is a
 project module. A base of `Protocol` or `ABC` is `:implements`.
 `def load() -> Animal` is `:implements` when `Animal` is a bare imported
 project name. `list[Animal]` is not. Public module-level functions and
-classes are `:ops`; each class is followed by its methods as
-`Class.method` (`PartnersView.create`). A `_name` function, method, or
-class (and every method of a `_Name` class) is `:private`. Dunder
-methods, nested functions, and `def` inside a docstring are skipped. A module whose public classes are only `Protocol` or
-`ABC` bases, with no public functions, is `:stereotype :interface`.
+classes are `:ops`; each class (`:kind :class`) is followed by its
+methods, named `Class.method` (`PartnersView.create`) with `:owner` the
+class. The card lists `class PartnersView` with its methods indented under
+it; the box shows `class PartnersView` and `PartnersView.create`. A `_name` function, method, or
+class (and every method of a `_Name` class) is `:private`; a dunder
+such as `__init__` is public. Nested functions and `def` inside a
+docstring are skipped. A module whose public classes are only `Protocol` or
+`ABC` bases, with no public functions, is `:stereotype :interface`. A
+package's `__init__.py` importing a module inside that package is a
+re-export, shown by nesting, not a dependency; its imports from outside
+the package stay.
 
 **Ruby** (`uml-viewer.ruby-language.graph-ruby`) emits one class per `.rb`
 file. Point `:src` at a Rails project root and it scans `app` and `lib`.
@@ -587,7 +599,7 @@ file. A superclass or mixin that is not in the project is foreign
 such as `StandardError` or `Enumerable`. `require "json"` is foreign
 `json`. Methods are `:ops`. Methods after a bare `private` or
 `protected`, or written `private def`, are `:private`; `initialize` is
-skipped. `def self.x` and methods in
+public. `def self.x` and methods in
 `class << self` are `self.x`. HTTP endpoints declared as Grape (or
 Sinatra-style) verb blocks are `:ops` too, after the methods, named by
 verb and nested path: `get :callback do` inside `namespace :auth do` is

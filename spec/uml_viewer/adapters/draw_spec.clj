@@ -30,6 +30,7 @@
                   q/text (rec :text)
                   q/text-align (rec :text-align)
                   q/text-size (rec :text-size)
+                  q/text-width (fn [s] (* 7 (count (str s))))
                   q/text-font (rec :text-font)
                   q/create-font (fn [& _] :font)
                   q/triangle (rec :triangle)
@@ -432,8 +433,8 @@
   (it "draws nothing without at least two points"
     (record-quil
       (fn [log]
-        (call 'draw-edge {:points [] :from :a :to :b} false (scene))
-        (call 'draw-edge {:points [[0 0]] :from :a :to :b} false (scene))
+        (call 'draw-edge {:points [] :from :a :to :b} false (scene) true)
+        (call 'draw-edge {:points [[0 0]] :from :a :to :b} false (scene) true)
         (should= [] @log))))
 
   (it "uses gold when selected and muted otherwise, and draws a head"
@@ -441,12 +442,12 @@
       (fn [log]
         (let [s (scene)
               e (first (filter #(= :inheritance (:kind %)) (:edges s)))]
-          (call 'draw-edge e true s)
+          (call 'draw-edge e true s true)
           (should (painted? log :stroke draw/gold))
           (should-contain [:stroke-weight 2.2] @log)
           (should-contain :triangle (kinds log))
           (reset! log [])
-          (call 'draw-edge (dissoc e :head) false s)
+          (call 'draw-edge (dissoc e :head) false s true)
           (should (painted? log :stroke draw/muted))
           (should-contain [:stroke-weight 1.4] @log)
           (should-not-contain :triangle (kinds log))))))
@@ -456,11 +457,11 @@
       (fn [log]
         (let [s (scene)
               e (assoc (first (:edges s)) :violating true :kind :dependency)]
-          (call 'draw-edge e false s)
+          (call 'draw-edge e false s true)
           (should (painted? log :stroke draw/violation))
           (should-contain [:stroke-weight 2.0] @log)
           (reset! log [])
-          (call 'draw-edge e true s)
+          (call 'draw-edge e true s true)
           (should (painted? log :stroke draw/violation-hot))
           (should-contain [:stroke-weight 3.2] @log)))))
 
@@ -809,6 +810,24 @@
     (should= "deleted" (draw/change-badge {:changed :deleted}))
     (should-be-nil (draw/change-badge {:changed :modified}))
     (should-be-nil (draw/change-badge {})))
+
+  (it "colors a changed arrow by its change unless changes are hidden"
+    (should= [draw/changed 2.0] (draw/edge-ink {:changed :added} false true))
+    (should= [draw/deleted 2.0] (draw/edge-ink {:changed :deleted} false true))
+    (should= [draw/muted 1.4] (draw/edge-ink {:changed :added} false false))
+    (should= [draw/violation 2.0] (draw/edge-ink {:changed :added :violating true} false true))
+    (should= [draw/gold 2.2] (draw/edge-ink {:changed :added} true true)))
+
+  (it "tags a changed pair in the arrow popup"
+    (should= "a -> b  · new" (draw/dep-label {:from :a :to :b :changed :added}))
+    (should= "a -> b  (inheritance)  · removed"
+             (draw/dep-label {:from :a :to :b :kind :inheritance :changed :deleted}))
+    (should= "a -> b" (draw/dep-label {:from :a :to :b})))
+
+  (it "cuts a card label to one line instead of wrapping it away"
+    (should= "depends on  Collab…" (draw/fit-text "depends on  Collaborator_invitations_view" 19 count))
+    (should= "short" (draw/fit-text "short" 19 count))
+    (should= "…" (draw/fit-text "abc" 0 count)))
 
   (it "colors deleted code apart from changed code"
     (should= draw/deleted (draw/change-ink :deleted))

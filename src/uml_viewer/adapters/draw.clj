@@ -139,18 +139,22 @@
          :tip tip
          :behind behind}))))
 
-(defn- edge-ink [e selected?]
+(defn edge-ink
+  "Stroke color and weight: violations, then the selection, then this
+  branch's change when `changes?`, else muted."
+  [e selected? changes?]
   (cond
     (and (:violating e) selected?) [violation-hot 3.2]
     (:violating e) [violation 2.0]
     selected? [gold 2.2]
+    (and changes? (:changed e)) [(change-ink (:changed e)) 2.0]
     :else [muted 1.4]))
 
-(defn- draw-edge [e selected? scene]
+(defn- draw-edge [e selected? scene changes?]
   (when-let [drawn (if (:strokes e)
                      e
                      (live-edge e scene))]
-    (let [[c w] (edge-ink e selected?)]
+    (let [[c w] (edge-ink e selected? changes?)]
       (stroke-rgb c w))
     (q/no-fill)
     (q/stroke-cap :round)
@@ -403,10 +407,14 @@
 
 (def popup-max-lines 30)
 
+(def ^:private dep-change-tag
+  {:added "  · new" :deleted "  · removed" :modified "  · changed"})
+
 (defn dep-label [d]
   (str (name (:from d)) " -> " (name (:to d))
        (when (and (:kind d) (not= :dependency (:kind d)))
-         (str "  (" (name (:kind d)) ")"))))
+         (str "  (" (name (:kind d)) ")"))
+       (dep-change-tag (:changed d))))
 
 (defn popup-lines
   "Popup rows for an arrow's pairs: a count header when it bundles more
@@ -701,11 +709,11 @@
           :when (in-view? (:rect p) cam-x cam-y world-w world-h)]
     (draw-package-body p (package-chosen? state p))))
 
-(defn- draw-scene-edges [scene sel-id hover cam-x cam-y world-w world-h]
+(defn- draw-scene-edges [scene sel-id hover cam-x cam-y world-w world-h changes?]
   (when-not (get-in scene [:diagram :hide-edges])
     (doseq [e (:edges scene)
             :when (edge-visible? e cam-x cam-y world-w world-h)]
-      (draw-edge e (edge-hot? e sel-id hover) scene))))
+      (draw-edge e (edge-hot? e sel-id hover) scene changes?))))
 
 (defn- draw-sections [scene]
   (doseq [sec (:sections scene)]
@@ -719,6 +727,17 @@
           :when (in-view? (:rect p) cam-x cam-y world-w world-h)]
     (draw-package-title p)))
 
+(def ^:private context-veil-alpha 150)
+
+(defn- draw-context-veil
+  "Dim a box shown only as the far end of a changed arrow."
+  [c]
+  (let [r (:rect c)
+        [cr cg cb] bg]
+    (q/no-stroke)
+    (q/fill cr cg cb context-veil-alpha)
+    (q/rect (:x r) (:y r) (:w r) (:h r) 6)))
+
 (defn- draw-scene-classes [scene sel-id hover-id hover sel cam-x cam-y world-w world-h changes?]
   (doseq [c (remove :dummy? (:classes scene))
           :when (class-visible? c cam-x cam-y world-w world-h)]
@@ -727,6 +746,8 @@
                 (= hover-id (:id c))
                 hover
                 sel)
+    (when (:context c)
+      (draw-context-veil c))
     (when changes?
       (draw-change-mark c))))
 
@@ -744,7 +765,8 @@
     (q/scale z)
     (q/translate (- cam-x) (- cam-y))
     (draw-package-bodies scene state cam-x cam-y world-w world-h)
-    (draw-scene-edges scene sel-id hover cam-x cam-y world-w world-h)
+    (draw-scene-edges scene sel-id hover cam-x cam-y world-w world-h
+                      (not (:hide-changes state)))
     (draw-sections scene)
     (draw-package-titles scene cam-x cam-y world-w world-h)
     (draw-scene-classes scene sel-id hover-id hover sel cam-x cam-y world-w world-h
@@ -874,14 +896,25 @@
   (q/fill 232 196 72 48)
   (q/rect 0 (:y row) detail/width (:h row)))
 
+(defn fit-text
+  "`s` cut to fit `w` as measured by `measure`, ending in `…` when cut."
+  [s w measure]
+  (if (<= (measure s) w)
+    s
+    (loop [n (dec (count s))]
+      (let [cut (str (subs s 0 (max 0 n)) "…")]
+        (if (or (<= n 0) (<= (measure cut) w))
+          cut
+          (recur (dec n)))))))
+
 (defn- draw-row-label [row hover?]
   (when (:text row)
     (let [x detail/pad
           y (:y row)
           cols (detail/column-layout)
-          name-right (if (seq cols)
-                       (- (:left (first cols)) detail/col-gap)
-                       (- detail/width detail/pad))]
+          right (if (and (= :stats (:kind row)) (seq cols))
+                  (- (:left (first cols)) detail/col-gap)
+                  (- detail/width detail/pad))]
       (q/text-align :left :top)
       (q/text-size (if (= :name (:kind row)) 20 13))
       (rgb (cond
@@ -889,8 +922,7 @@
              (:changed row) (change-ink (:changed row))
              (:private row) muted
              :else (detail-row-color row)))
-      (q/text (:text row) x y
-              (max 0 (- name-right x)) (:h row)))))
+      (q/text (fit-text (:text row) (max 0 (- right x)) q/text-width) x y))))
 
 (defn- draw-detail-row [row hover?]
   (when hover? (draw-hover-wash row))

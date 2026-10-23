@@ -163,12 +163,18 @@
     (seq kids) (assoc :contents kids)))
 
 (defn- with-changes
-  "A file box keeps its own `:changed`; a drill box counts changed classes under it."
+  "A file box keeps its own `:changed` or `:context`; a drill box counts
+  changed classes under it, and is `:context` when it holds only context."
   [m leaf classes id drill?]
   (if drill?
-    (let [n (count (filter #(and (:changed %) (under-id? % id)) classes))]
-      (cond-> m (pos? n) (assoc :changed-count n)))
-    (cond-> m (:changed leaf) (assoc :changed (:changed leaf)))))
+    (let [under (filter #(under-id? % id) classes)
+          n (count (filter :changed under))]
+      (cond-> m
+        (pos? n) (assoc :changed-count n)
+        (and (zero? n) (some :context under)) (assoc :context true)))
+    (cond-> m
+      (:changed leaf) (assoc :changed (:changed leaf))
+      (:context leaf) (assoc :context true))))
 
 (defn- view-class [idx classes path id]
   (let [leaf (get idx id)
@@ -366,9 +372,10 @@
         (:packages view)))
 
 (defn- leaf-dep [e]
-  {:from (or (:orig-from e) (:from e))
-   :to (or (:orig-to e) (:to e))
-   :violating (boolean (:violating e))})
+  (cond-> {:from (or (:orig-from e) (:from e))
+           :to (or (:orig-to e) (:to e))
+           :violating (boolean (:violating e))}
+    (:changed e) (assoc :changed (:changed e))))
 
 (defn- merge-direction-edges [edges]
   (->> edges
@@ -384,11 +391,13 @@
                                              [(:from e) (:to e)
                                               (:orig-from e) (:orig-to e)])
                                            es))
-                     deps (vec (distinct (mapcat #(or (seq (:leaves %)) [(leaf-dep %)]) es)))]
-                 (cond-> (assoc (dissoc best :violating :orig-from :orig-to)
+                     deps (vec (distinct (mapcat #(or (seq (:leaves %)) [(leaf-dep %)]) es)))
+                     change (policy/merged-change deps)]
+                 (cond-> (assoc (dissoc best :violating :orig-from :orig-to :changed)
                            :via-ids (disj via nil)
                            :deps deps)
-                   viol (assoc :kind :dependency :violating true)))))))
+                   viol (assoc :kind :dependency :violating true)
+                   change (assoc :changed change)))))))
 
 (defn- pkg-dummy [p]
   {:id (:id p)

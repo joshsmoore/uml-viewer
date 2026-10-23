@@ -110,9 +110,17 @@
   (when (member-gate c)
     (mapv :text (or (:fields c) []))))
 
+(defn op-line
+  "Box text for an op: `class X` for a class, `X.m` for a method of one."
+  [op]
+  (cond
+    (= :class (:kind op)) (str "class " (:text op))
+    (:owner op) (str (:owner op) "." (:text op))
+    :else (:text op)))
+
 (defn- op-texts [c]
   (when (member-gate c)
-    (mapv :text (remove :private (or (:ops c) [])))))
+    (mapv op-line (remove :private (or (:ops c) [])))))
 
 (defn- child-line [ch]
   {:kind :child

@@ -330,8 +330,7 @@
 
 (defn- def-op [line self?]
   (when-let [[_ self-dot name] (re-find #"^\s*def\s+(self\.)?([A-Za-z_]\w*[?!=]?)" line)]
-    (when-not (= "initialize" name)
-      {:name name :text (if (or self-dot self?) (str "self." name) name)})))
+    {:name name :text (if (or self-dot self?) (str "self." name) name)}))
 
 (defn- ops-step [{:keys [vis selves ops]} line]
   (let [k (indent-of line)
@@ -356,7 +355,8 @@
 (defn ops-of
   "Methods, in order, then HTTP endpoints. A method after a bare
   `private` or `protected` at the same indent, or written `private def`,
-  is `:private`. `class << self` and `def self.x` are class methods."
+  is `:private`; `initialize` is public. `class << self` and `def self.x`
+  are class methods."
   [text]
   (->> (str/split-lines text)
        (remove str/blank?)

@@ -43,7 +43,9 @@ ensure_gitignore() {
   awk -v begin="$begin" -v end="$end" '
     $0 == begin { inside=1; next }
     $0 == end { inside=0; next }
-    !inside { print }
+    inside { next }
+    /^[[:space:]]*$/ { blanks = blanks $0 "\n"; next }
+    { printf "%s", blanks; blanks=""; print }
   ' "$file" > "$tmp_file"
   [[ ! -s "$tmp_file" ]] || printf '\n' >> "$tmp_file"
   printf '%s\n' "$begin" ".uml-viewer/" "uml-viewer-log.txt" "$end" >> "$tmp_file"
