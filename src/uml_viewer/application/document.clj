@@ -157,7 +157,7 @@
 
 (def session-keys
   [:focus :proposal-id :proposal :open-layer :declutter
-   :cam-x :cam-y :zoom :selected :detail-id :hide-changes :only-changes :pr])
+   :cam-x :cam-y :zoom :zoomed :selected :detail-id :hide-changes :only-changes :pr])
 
 (defn save-session!
   "Write the current view (depth, pan, zoom, proposal) for --restart."
@@ -238,6 +238,7 @@
                  :cam-x (or (:cam-x snap) 0)
                  :cam-y (or (:cam-y snap) 0)
                  :zoom (or (:zoom snap) 1.0)
+                 :zoomed (boolean (:zoomed snap))
                  :selected (:selected snap)
                  :detail-id (:detail-id snap)
                  :hide-changes (boolean (:hide-changes snap))

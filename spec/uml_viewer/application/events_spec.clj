@@ -241,7 +241,17 @@
       (should= 0.0 (:cam-y (events/on-scroll s {} 900)))
       (should= 0.0 (:cam-y (events/on-scroll s :nope 900)))))
 
-  (it "zooms 10% with ctrl+ and ctrl- and restores with ctrl+0"
+  (it "fits the whole scene in the view, capped so a small one is not blown up"
+    (let [scene-of (fn [w h] {:scene {:size {:w w :h h :min-x 0 :min-y 0}}})]
+      (should= 0.5 (events/fit-zoom (scene-of 2000 900) {:view-w 1000 :window-h 900}))
+      (should= 0.25 (events/fit-zoom (scene-of 1000 3600) {:view-w 1000 :window-h 900}))
+      (should= events/fit-max (events/fit-zoom (scene-of 100 100) {:view-w 1000 :window-h 900}))
+      (should= {:zoom 0.5 :cam-x 10 :cam-y 20 :scene {:size {:w 2010 :h 920 :min-x 10 :min-y 20}}}
+               (events/fit-view {:zoomed true :zoom 3.0 :cam-x 99 :cam-y 99
+                                 :scene {:size {:w 2010 :h 920 :min-x 10 :min-y 20}}}
+                                {:view-w 1000 :window-h 900}))))
+
+  (it "zooms 10% with ctrl+ and ctrl- and fits the window with ctrl+0"
     (let [dims {:window-w 1500 :window-h 900 :view-w 1220 :control? true}
           s (state)
           in (events/on-key s :+ dims)
@@ -251,10 +261,12 @@
       (should= events/zoom-step (:zoom in))
       (should= events/zoom-step (:zoom eq))
       (should= 1.0 (:zoom out))
-      (should= 1.0 (:zoom reset))
+      (should (:zoomed in))
+      (should= (events/fit-zoom s dims) (:zoom reset))
+      (should-not (:zoomed reset))
       (should (pos? (:cam-x in)))
       (should= 0.0 (:cam-x out))
-      (should= 0.0 (:cam-x reset))
+      (should= 0 (:cam-x reset))
       (should= 1.0 (events/zoom-of (events/on-key s :+ {})))
       (should= s (events/on-key s :+ {:control? false}))))
 

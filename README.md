@@ -270,12 +270,14 @@ or the language scanner does.
   **I**. Names of rectangles that are not classes (components/layers,
   interfaces, enumerations, package banners) are italic. Foreign libraries
   listed in policy are ovals outside the components.
-- The page fills the browser window and follows its size.
+- The page fills the browser window and follows its size. The diagram is
+  zoomed to fit the window (up to 150%) and refits when the window is
+  resized, a diagram loads, or you drill in or out.
 - Scroll to pan vertically; Shift-scroll (or left/right arrows) for
   horizontal. Pan can follow arrows that bow past the origin.
-- **Ctrl+** (or **Ctrl+=**) zooms in 10%; **Ctrl-** zooms out 10%;
-  **Ctrl+0** restores 100%. **Cmd** works the same, and a trackpad pinch
-  zooms. Zoom keeps the view center still.
+- **Ctrl+** (or **Ctrl+=**) zooms in 10%; **Ctrl-** zooms out 10%. Zooming
+  by hand stops the fitting; **Ctrl+0** fits the window again. **Cmd** works
+  the same, and a trackpad pinch zooms. Zoom keeps the view center still.
 - **Regen** in the inspector asks the companion to rewrite policy and IR
   (see [Companion mailbox](#companion-mailbox)).
 - `R` reloads the current EDN. The watcher also reloads on save, and when

@@ -256,7 +256,8 @@
      (+ (:cam-y state 0) (/ (double vh) 2.0 z))]))
 
 (defn- set-zoom
-  "Set zoom, keeping the world point at the view center still."
+  "Set zoom by hand, keeping the world point at the view center still.
+  The view stops fitting the window until `fit-view`."
   [state z dims]
   (let [z (max zoom-min (min zoom-max (double z)))
         [cx cy] (view-center state dims)
@@ -264,8 +265,32 @@
         vh (or (:window-h dims) 900)]
     (assoc state
       :zoom z
+      :zoomed true
       :cam-x (- cx (/ (double vw) 2.0 z))
       :cam-y (- cy (/ (double vh) 2.0 z)))))
+
+(def fit-max 1.5)
+
+(defn fit-zoom
+  "Scale that shows the whole scene in the view, at most `fit-max`."
+  [state dims]
+  (let [{:keys [w h min-x min-y]} (get-in state [:scene :size] {:w 800 :h 600})
+        sw (max 1.0 (- (double w) (or min-x 0)))
+        sh (max 1.0 (- (double h) (or min-y 0)))
+        vw (double (or (:view-w dims) (:window-w dims) 1500))
+        vh (double (or (:window-h dims) 900))]
+    (max zoom-min (min fit-max (/ vw sw) (/ vh sh)))))
+
+(defn fit-view
+  "Zoom and pan so the whole scene fills the view; the view keeps
+  fitting as the window or diagram changes until zoomed by hand."
+  [state dims]
+  (let [size (get-in state [:scene :size] {})]
+    (-> state
+        (dissoc :zoomed)
+        (assoc :zoom (fit-zoom state dims)
+               :cam-x (or (:min-x size) 0)
+               :cam-y (or (:min-y size) 0)))))
 
 (defn- raw-char [raw]
   (cond
@@ -302,7 +327,7 @@
      (case dir
        :in (set-zoom state (* (zoom-of state) zoom-step) dims)
        :out (set-zoom state (/ (zoom-of state) zoom-step) dims)
-       :reset (set-zoom state 1.0 dims))
+       :reset (fit-view state dims))
      (case k
        :left (on-scroll state -2 (assoc dims :horizontal? true))
        :right (on-scroll state 2 (assoc dims :horizontal? true))

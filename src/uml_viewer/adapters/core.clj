@@ -60,4 +60,4 @@
         (let [u (web/start! path source-impl restart? pr)]
           (println "Watching" path)
           (println "Viewer at" u)
-          (println "Double-click a class for its card. Scroll to pan (Shift-scroll for horizontal). Ctrl+/− zoom; Ctrl+0 resets. R reloads. Click the real diagram above Proposals, or a proposal to show it."))))))
+          (println "Double-click a class for its card. Scroll to pan (Shift-scroll for horizontal). Ctrl+/− zoom; Ctrl+0 fits the window. R reloads. Click the real diagram above Proposals, or a proposal to show it."))))))

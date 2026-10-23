@@ -198,10 +198,24 @@
 (defn on-card-close [state]
   (done (events/close-detail state)))
 
-(defn tick
-  "Reload the diagram if its files changed and read the companion's mail."
+(defn keep-fit
+  "Refit `state` to its window when the window or the diagram's size
+  changed since the last fit, unless it was zoomed by hand."
   [state]
-  (-> state document/maybe-reload document/poll-mail))
+  (let [fit-key [(get-in state [:scene :size]) (window state)]]
+    (if (or (:zoomed state) (nil? (:scene state)) (= fit-key (:fit-key state)))
+      state
+      (assoc (events/fit-view state (dims state)) :fit-key fit-key))))
+
+(defn tick
+  "Reload the diagram if its files changed and read the companion's mail.
+  The page's window size survives a newly loaded diagram, and the view
+  refits when the window or diagram changed."
+  [state]
+  (let [w (:window state)]
+    (cond-> (-> state document/maybe-reload document/poll-mail)
+      w (assoc :window w)
+      true keep-fit)))
 
 (defn views
   "What the page shows: the window SVG, and the card with its title."

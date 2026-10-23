@@ -426,7 +426,7 @@
 (def help-text
   (str "Click a component for its card.\nDouble-click a component to open it.\n"
        "Right-click for refresh and omit.\nEsc (or ←) goes up a level.\n"
-       "Scroll to pan; Shift-scroll for horizontal.\nCtrl+/− zoom 10%; Ctrl+0 resets.\n"
+       "Scroll to pan; Shift-scroll for horizontal.\nCtrl+/− zoom 10%; Ctrl+0 fits the window.\n"
        "R reloads.\nB shows or hides this branch's changes.\n"
        "C shows only this branch's changes.\nClick the real diagram above Proposals,\n"
        "or a proposal to show it."))

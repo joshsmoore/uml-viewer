@@ -222,4 +222,22 @@
   (it "reloads and reads mail on a tick"
     (with-redefs [document/maybe-reload #(conj % :reloaded)
                   document/poll-mail #(conj % :polled)]
-      (should= [:reloaded :polled] (viewer/tick [])))))
+      (should= [:reloaded :polled] (viewer/tick []))))
+
+  (it "refits on a tick when the window or diagram changed, unless zoomed by hand"
+    (with-redefs [document/maybe-reload identity
+                  document/poll-mail identity]
+      (let [s {:scene {:size {:w 2000 :h 400 :min-x 0 :min-y 0}} :window {:w 1280 :h 900}}
+            fitted (viewer/tick s)]
+        (should= 0.5 (:zoom fitted))
+        (should= fitted (viewer/tick fitted))
+        (should= 0.25 (:zoom (viewer/tick (assoc fitted :window {:w 780 :h 900}))))
+        (should= 3.0 (:zoom (viewer/tick (assoc s :zoomed true :zoom 3.0))))
+        (should-be-nil (:zoom (viewer/tick {:window {:w 1280 :h 900}}))))))
+
+  (it "keeps the window size when mail loads a new diagram"
+    (with-redefs [document/maybe-reload identity
+                  document/poll-mail (fn [_] {:path "new.edn"})]
+      (should= {:path "new.edn" :window {:w 1800 :h 1100}}
+               (viewer/tick {:path "old.edn" :window {:w 1800 :h 1100}}))
+      (should= {:path "new.edn"} (viewer/tick {:path "old.edn"})))))
