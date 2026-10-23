@@ -241,3 +241,42 @@
       (should= {:path "new.edn" :window {:w 1800 :h 1100}}
                (viewer/tick {:path "old.edn" :window {:w 1800 :h 1100}}))
       (should= {:path "new.edn"} (viewer/tick {:path "old.edn"})))))
+
+(defn- popup-state []
+  (assoc (state)
+         :doc {:classes [{:id :a :ns "demo.a" :file "src/demo/a.clj" :lang :clojure}
+                         {:id :b :ns "demo.b" :name "B"}]}
+         :window {:w 1500 :h 920}))
+
+(describe "pinned arrow pairs"
+  (it "pins an arrow's pair list on click, and Esc or a click elsewhere drops it"
+    (with-redefs [events/on-press (fn [s _ _] (assoc s :selected {:kind :edge :deps [{:from :a :to :b}]}))]
+      (let [pinned (:state (press (popup-state) 300 300))]
+        (should= {:hit {:kind :edge :deps [{:from :a :to :b}]} :pointer [300.0 300.0]} (:pinned pinned))
+        (should-be-nil (:pinned (:state (viewer/handle pinned :src {"type" "key" "key" "Escape"}))))))
+    (with-redefs [events/on-press (fn [s _ _] (assoc s :selected nil))]
+      (let [s (assoc (popup-state) :pinned {:hit {:kind :edge :deps [{:from :a :to :b}]} :pointer [300 300]})]
+        (should-be-nil (:pinned (:state (press s 900 700)))))))
+
+  (it "opens the from file at the line that refers to the to class"
+    (let [s (assoc (popup-state) :pinned {:hit {:kind :edge :deps [{:from :a :to :b}]} :pointer [300 300]})
+          row (nth (:rows (uml-viewer.adapters.svg/popup-layout [{:from :a :to :b}] [300 300] {:w 1500 :h 920} true)) 1)
+          opened (atom nil)]
+      (with-redefs [viewer/dep-ident (fn [_ dep _] {:file "src/demo/a.clj" :line 3 :dep dep})
+                    source-window/member-page (fn [_ ident] (reset! opened ident) {:title "a.clj:3"})]
+        (let [{:keys [state reply]} (press s (+ 2 (:x (:rect row))) (+ 2 (:y (:rect row))))]
+          (should= {:title "a.clj:3"} (:source reply))
+          (should= 3 (:line @opened))
+          (should (:pinned state))))))
+
+  (it "finds the referring line in the from class's file"
+    (let [dir (doto (java.io.File/createTempFile "uml-dep" ".clj") (spit "(ns demo.a\n  (:require [demo.b :as b]))\n"))
+          s (assoc-in (popup-state) [:doc :classes 0 :file] (.getPath dir))]
+      (should= 2 (:line (viewer/dep-ident s {:from :a :to :b})))
+      (should= {:lines #{2} :color (viewer/dep-color {})} (:marks (viewer/dep-ident s {:from :a :to :b})))
+      (let [dep {:from :a :to :b :violating true :sites [{:line 5 :in "go"} {:line 9}]}]
+        (should= 5 (:line (viewer/dep-ident s dep)))
+        (should= 9 (:line (viewer/dep-ident s dep {:line 9})))
+        (should= {:lines #{5 9} :color "rgb(196,42,36)"} (:marks (viewer/dep-ident s dep))))
+      (should-be-nil (viewer/dep-ident s {:from :b :to :a}))
+      (should-be-nil (viewer/dep-ident s {:from :missing :to :a})))))

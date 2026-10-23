@@ -2,7 +2,8 @@
   "Python LanguageGraph: one class per module, import edges, class bases."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [uml-viewer.graph :as graph]))
+            [uml-viewer.graph :as graph])
+  (:import [java.util.regex Pattern]))
 
 (def ^:private skip-dir-names
   #{"__pycache__" "venv" "site-packages" "dist" "build"
@@ -275,6 +276,18 @@
 (defn- conj-import [acc parsed]
   (if parsed (conj acc parsed) acc))
 
+(defn- import-spans
+  "Half-open `[start end]` of each import statement."
+  [text holes]
+  (let [n (count text)]
+    (loop [i 0 acc []]
+      (if (>= i n)
+        acc
+        (if (import-at? text holes i)
+          (let [end (statement-end text i)]
+            (recur end (conj acc [i end])))
+          (recur (inc i) acc))))))
+
 (defn- imports-of [text holes]
   (let [n (count text)]
     (loop [i 0 acc []]
@@ -359,17 +372,82 @@
                   {:cls nil :body nil :found []}
                   (lines-at text))))
 
+(defn- member-step [{:keys [cls body found] :as st} [n line]]
+  (cond
+    (str/blank? line) st
+    (zero? (line-indent line))
+    (if-let [[_ kind nm] (re-find #"^(?:async[ \t]+)?(def|class)[ \t]+([A-Za-z_][A-Za-z0-9_]*)" line)]
+      {:cls (when (= "class" kind) nm) :body nil :found (conj found {:name nm :line n})}
+      {:cls nil :body nil :found found})
+    (nil? cls) st
+    :else
+    (let [k (line-indent line)
+          body (or body k)
+          nm (when (= k body)
+               (second (re-find #"^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)" line)))]
+      {:cls cls
+       :body body
+       :found (cond-> found nm (conj {:name (str cls "." nm) :line n}))})))
+
+(defn- members-of
+  "Each module-level def or class, and each method as `Class.method`,
+  as `{:name :line}` named as its op."
+  [text]
+  (:found (reduce member-step
+                  {:cls nil :body nil :found []}
+                  (map-indexed (fn [i l] [(inc i) l]) (str/split-lines text)))))
+
 (defn read-module
   "Module surface of Python `source`: imports, public module-level
   functions and classes (`:defs`), every module-level one including
-  `_private` (`:all-defs`), and the methods of those classes."
+  `_private` (`:all-defs`), the methods of those classes, and what
+  finding call sites needs: the masked text, its holes, import spans,
+  and members."
   [source]
   (let [{:keys [text holes]} (mask-comments source)
         all-defs (defs-of text holes)]
     {:imports (imports-of text holes)
      :defs (filterv (complement :private) all-defs)
      :all-defs all-defs
-     :methods (methods-of text holes)}))
+     :methods (methods-of text holes)
+     :text text
+     :holes holes
+     :import-spans (import-spans text holes)
+     :members (members-of text)}))
+
+(defn- uses-of
+  "Where `word` is used in `surface` outside strings and imports, as
+  sites `{:line :in? :call?}`; `:call` is an attribute read off it."
+  [surface word]
+  (let [{:keys [text holes import-spans members]} surface
+        starts (graph/line-starts text)
+        skip? (fn [i] (or (in-hole? holes i)
+                          (some (fn [[a b]] (and (<= a i) (< i b))) import-spans)))
+        m (re-matcher (re-pattern (str "(?<![\\w.])" (Pattern/quote word)
+                                       "(?:\\.([A-Za-z_]\\w*))?(?!\\w)"))
+                      (or text ""))]
+    (loop [acc []]
+      (if (.find m)
+        (recur (if (skip? (.start m))
+                 acc
+                 (let [line (graph/line-at starts (.start m))
+                       in (graph/enclosing-member text members line)]
+                   (conj acc (cond-> {:line line}
+                               in (assoc :in in)
+                               (.group m 1) (assoc :call (.group m 1)))))))
+        acc))))
+
+(defn- sites-of
+  "Call sites per target id: each use of the name an import bound, or of
+  the dotted path a plain `import` named."
+  [surface hits]
+  (graph/sites-by-target
+    (for [hit hits
+          :when (:id hit)
+          :let [word (or (:path hit) (:bind hit))]
+          :when word
+          site (uses-of surface word)]
+      [(:id hit) site])))
 
 (defn- module-relative [file root]
   (let [root (.getCanonicalFile (io/file root))
@@ -545,6 +623,7 @@
      :foreigns foreigns
      :inherits inherits
      :impls impls
+     :sites (sites-of surface hits)
      :ops (op-maps (:all-defs surface) (:methods surface))
      :stereotype (when (interface-module? (:defs surface)) :interface)}))
 
@@ -558,14 +637,16 @@
      :id (graph/id-of ns-str prefix)}))
 
 (defn- as-edges [c]
-  (concat
-    (map (fn [to] {:from (:id c) :to to :kind :implements}) (:impls c))
-    (map (fn [to] {:from (:id c) :to to :kind :inheritance}) (:inherits c))
-    (map (fn [to] {:from (:id c) :to to :kind :dependency}) (:requires c))
-    (map (fn [to] {:from (:id c) :to to :kind :dependency}) (:foreigns c))))
+  (graph/with-sites
+    (concat
+      (map (fn [to] {:from (:id c) :to to :kind :implements}) (:impls c))
+      (map (fn [to] {:from (:id c) :to to :kind :inheritance}) (:inherits c))
+      (map (fn [to] {:from (:id c) :to to :kind :dependency}) (:requires c))
+      (map (fn [to] {:from (:id c) :to to :kind :dependency}) (:foreigns c)))
+    (:sites c)))
 
 (defn- public-class [c]
-  (cond-> (dissoc c :requires :foreigns :inherits :impls :init? :relative)
+  (cond-> (dissoc c :requires :foreigns :inherits :impls :init? :relative :sites)
     (empty? (:ops c)) (dissoc :ops)
     (nil? (:stereotype c)) (dissoc :stereotype)))
 

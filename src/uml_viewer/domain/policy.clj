@@ -236,7 +236,8 @@
   "The class-level pair an arrow stands for."
   [e]
   (cond-> {:from (:from e) :to (:to e) :kind (:kind e) :violating (boolean (:violating e))}
-    (:changed e) (assoc :changed (:changed e))))
+    (:changed e) (assoc :changed (:changed e))
+    (:sites e) (assoc :sites (:sites e))))
 
 (defn re-end
   "`e` drawn between `from` and `to`, keeping the class pairs it carries."

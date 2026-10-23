@@ -123,3 +123,26 @@
   (let [[impl lang] (impl-and-lang lang-or-impl ident)]
     (when (and impl text)
       (from-text impl ident lang (:file ident) text))))
+
+(defn- word-at? [line w]
+  (and (seq (str w))
+       (re-find (re-pattern (str "(?<![\\w.])" (Pattern/quote (str w)) "(?!\\w)")) line)))
+
+(def ^:private import-line
+  #"^\s*(?:import|from|require|require_relative|use|include|extend|prepend|load)\b|^\s*[\[(]|:require")
+
+(defn reference-line
+  "1-based line of `text` that first refers to `target` (a class map
+  with `:ns`, `:name`, `:id`): a line naming its full namespace, else an
+  import-like line naming its last namespace segment, else a word match
+  of its class name, else of that segment. Nil when none matches."
+  [text target]
+  (let [lines (vec (str/split-lines (or text "")))
+        full (or (:ns target) (some-> (:id target) name))
+        seg (some-> full (str/split #"\.") last)
+        segs (distinct (remove nil? [seg (some-> seg (str/replace "-" "_"))]))
+        find-line (fn [pred] (some (fn [[i l]] (when (pred l) (inc i))) (map-indexed vector lines)))]
+    (or (find-line #(word-at? % full))
+        (find-line (fn [l] (and (re-find import-line l) (some #(word-at? l %) segs))))
+        (find-line #(word-at? % (:name target)))
+        (find-line (fn [l] (some #(word-at? l %) segs))))))

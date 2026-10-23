@@ -86,6 +86,7 @@
   {:from :engine.layout, :to :domain.geom, :kind :dependency}
   {:from :python-language.graph-python, :to :graph, :kind :implements}
   {:from :main.uml-viewer, :to :rust-language.source-rust, :kind :dependency}
+  {:from :adapters.viewer, :to :source, :kind :dependency}
   {:from :adapters.viewer, :to :application.detail, :kind :dependency}
   {:from :application.document, :to :engine.compose, :kind :dependency}
   {:from :adapters.web, :to :adapters.markup, :kind :dependency}
@@ -105,6 +106,7 @@
   {:from :ruby-language.graph-ruby, :to :graph, :kind :implements}
   {:from :main.uml-viewer, :to :ruby-language.source-ruby, :kind :dependency}
   {:from :adapters.web, :to :adapters.companion, :kind :dependency}
+  {:from :adapters.viewer, :to :domain.geom, :kind :dependency}
   {:from :application.events, :to :application.detail, :kind :dependency}
   {:from :adapters.viewer, :to :application.events, :kind :dependency}
   {:from :adapters.source-window, :to :source, :kind :dependency}
@@ -133,6 +135,7 @@
   {:from :application.detail, :to :engine.hit, :kind :dependency}
   {:from :ruby-language.source-ruby, :to :ruby-language.grape, :kind :dependency}
   {:from :adapters.viewer, :to :adapters.svg, :kind :dependency}
+  {:from :application.branch-diff, :to :graph, :kind :dependency}
   {:from :adapters.svg, :to :engine.route, :kind :dependency}
   {:from :adapters.svg, :to :engine.layout, :kind :dependency}
   {:from :application.document, :to :application.branch-base, :kind :dependency}
@@ -167,6 +170,7 @@
   {:from :main.uml-viewer, :to :clojure-language.graph-clojure, :kind :dependency}
   {:from :application.document, :to :application.overlay, :kind :dependency}
   {:from :adapters.web, :to :adapters.viewer, :kind :dependency}
+  {:from :adapters.viewer, :to :adapters.palette, :kind :dependency}
   {:from :application.document, :to :domain.mailbox, :kind :dependency}
   {:from :adapters.companion, :to :domain.mailbox, :kind :dependency}
   {:from :engine.route, :to :domain.geom, :kind :dependency}

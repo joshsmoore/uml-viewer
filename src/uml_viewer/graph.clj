@@ -187,3 +187,63 @@
                      distinct
                      vec)]
       {:classes classes :edges edges})))
+
+(defn- indent [line]
+  (count (re-find #"^[ \t]*" line)))
+
+(defn- closer? [line]
+  (boolean (re-matches #"\s*(end\b.*|[}\])]+[;,]?\s*)" line)))
+
+(defn member-end
+  "Last line of the member starting at 1-based line `start` of `text`:
+  the line before the first later non-blank line indented no deeper,
+  or that line itself when it closes the member (`end`, `}`). Never
+  past `limit`."
+  [text start limit]
+  (let [src (str/split-lines text)
+        own (indent (nth src (dec start) ""))
+        stop (some (fn [n]
+                     (let [line (nth src (dec n))]
+                       (when (and (not (str/blank? line)) (<= (indent line) own))
+                         (if (closer? line) n (dec n)))))
+                   (range (inc start) (inc (count src))))]
+    (min limit (or stop (count src)))))
+
+(defn line-starts
+  "Offset where each line of `text` starts."
+  [text]
+  (into [0] (keep-indexed (fn [i c] (when (= \newline c) (inc i)))) (str text)))
+
+(defn line-at
+  "1-based line holding offset `pos`, given `line-starts`."
+  [starts pos]
+  (let [i (java.util.Collections/binarySearch starts (long pos))]
+    (if (neg? i) (- (inc i)) (inc i))))
+
+(defn enclosing-member
+  "Name of the member (`{:name :line}`, in line order) whose span holds
+  1-based `line` of `text`, or nil. A span ends at `member-end`, never
+  past the next member."
+  [text members line]
+  (let [ms (vec (sort-by :line members))
+        limits (conj (mapv (comp dec :line) (rest ms)) Long/MAX_VALUE)]
+    (some (fn [[m limit]]
+            (when (<= (:line m) line (member-end text (:line m) limit))
+              (:name m)))
+          (map vector ms limits))))
+
+(def site-cap 20)
+
+(defn sites-by-target
+  "`{target-id [site …]}` from `[target-id site]` pairs, in line order,
+  at most `site-cap` per target. A site is `{:line :in? :call?}`."
+  [pairs]
+  (into {}
+        (map (fn [[id ps]]
+               [id (->> ps (map second) distinct (sort-by :line) (take site-cap) vec)]))
+        (group-by first pairs)))
+
+(defn with-sites
+  "Each edge gains the `:sites` its target has in `sites`."
+  [edges sites]
+  (mapv #(if-let [s (seq (get sites (:to %)))] (assoc % :sites (vec s)) %) edges))

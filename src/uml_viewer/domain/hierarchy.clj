@@ -375,7 +375,8 @@
   (cond-> {:from (or (:orig-from e) (:from e))
            :to (or (:orig-to e) (:to e))
            :violating (boolean (:violating e))}
-    (:changed e) (assoc :changed (:changed e))))
+    (:changed e) (assoc :changed (:changed e))
+    (:sites e) (assoc :sites (:sites e))))
 
 (defn- merge-direction-edges [edges]
   (->> edges

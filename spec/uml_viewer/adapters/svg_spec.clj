@@ -202,7 +202,7 @@
 
 (describe "arrow popup"
   (it "shows one pair without a header"
-    (should= [{:text "a -> b" :violating nil}]
+    (should= [{:text "a -> b" :violating nil :dep {:from :a :to :b}}]
              (svg/popup-lines [{:from :a :to :b}])))
 
   (it "counts pairs, lists violations first, and names non-dependency kinds"
@@ -227,15 +227,35 @@
 
   (it "boxes the pairs near the pointer and inside the window"
     (let [hover {:kind :edge :deps [{:from :a :to :b :violating true}]}
-          out (svg/edge-popup hover [1490 910] dims)
+          out (svg/edge-popup hover [1490 910] dims false)
           box (attrs (first (tagged :rect out)))]
       (should-contain "a -> b" (texts out))
       (should (<= (+ (:x box) (:width box)) 1500))
       (should (< (:y box) 910))
       (should (contains? (fills out) (palette/css palette/violation)))
-      (should= 26.0 (double (:y (attrs (first (tagged :rect (svg/edge-popup hover [10 10] dims)))))))
-      (should-be-nil (svg/edge-popup {:kind :class :deps [{:from :a :to :b}]} [0 0] dims))
-      (should-be-nil (svg/edge-popup hover nil dims)))))
+      (should= 26.0 (double (:y (attrs (first (tagged :rect (svg/edge-popup hover [10 10] dims false)))))))
+      (should-be-nil (svg/edge-popup {:kind :class :deps [{:from :a :to :b}]} [0 0] dims false))
+      (should-be-nil (svg/edge-popup hover nil dims false))))
+
+  (it "lists each pair's call sites under it only when pinned"
+    (let [deps [{:from :a :to :b :sites [{:line 3 :in "go" :call "run"} {:line 7}]}]]
+      (should= ["a -> b"] (map :text (svg/popup-lines deps)))
+      (should= ["a -> b" "    go:3  → run" "    top level:7"] (map :text (svg/popup-lines deps true)))
+      (should= {:line 3 :in "go" :call "run"} (:site (second (svg/popup-lines deps true))))))
+
+  (it "pins the list with a hint, and finds the pair row under a click"
+    (let [deps [{:from :a :to :b} {:from :a :to :c}]
+          out (svg/edge-popup {:kind :edge :deps deps} [100 100] dims true)
+          layout (svg/popup-layout deps [100 100] dims true)
+          [hint header ab] (:rows layout)
+          at (fn [row] (svg/popup-row-at layout (+ 2 (:x (:rect row))) (+ 2 (:y (:rect row)))))]
+      (should-contain svg/pinned-hint (texts out))
+      (should= svg/pinned-hint (:text hint))
+      (should= "2 pairs" (:text header))
+      (should-be-nil (at hint))
+      (should-be-nil (at header))
+      (should= {:from :a :to :b} (:dep (at ab)))
+      (should-be-nil (svg/popup-row-at layout 0 0)))))
 
 (describe "inspector"
   (it "explains itself when nothing is selected"

@@ -3,6 +3,7 @@
             [clojure.java.shell :as sh]
             [speclj.core :refer :all]
             [uml-viewer.application.branch-diff :as bd]
+            [uml-viewer.graph :as graph]
             [uml-viewer.ruby-language.source-ruby]))
 
 (defn- temp-dir []
@@ -118,20 +119,20 @@
 
 (describe "member end"
   (it "ends a Ruby method at its own end"
-    (should= 4 (bd/member-end "class A\n  def x\n    1\n  end\n  def y; end\nend\n" 2 99)))
+    (should= 4 (graph/member-end "class A\n  def x\n    1\n  end\n  def y; end\nend\n" 2 99)))
 
   (it "ends a one-line method on its own line"
-    (should= 2 (bd/member-end "class A\n  def x; end\n  def y; end\nend\n" 2 99)))
+    (should= 2 (graph/member-end "class A\n  def x; end\n  def y; end\nend\n" 2 99)))
 
   (it "ends a Python function before the next dedented line"
-    (should= 3 (bd/member-end "def f():\n    return 1\n\nx = 2\n" 1 99)))
+    (should= 3 (graph/member-end "def f():\n    return 1\n\nx = 2\n" 1 99)))
 
   (it "ends a brace body at its closing brace"
-    (should= 3 (bd/member-end "function f() {\n  return 1;\n}\nconst x = 2;\n" 1 99)))
+    (should= 3 (graph/member-end "function f() {\n  return 1;\n}\nconst x = 2;\n" 1 99)))
 
   (it "runs to the end of the file, never past the limit"
-    (should= 3 (bd/member-end "(defn f []\n  1\n  2)\n" 1 99))
-    (should= 2 (bd/member-end "(defn f []\n  1\n  2)\n" 1 2))))
+    (should= 3 (graph/member-end "(defn f []\n  1\n  2)\n" 1 99))
+    (should= 2 (graph/member-end "(defn f []\n  1\n  2)\n" 1 2))))
 
 (describe "marking classes"
   (it "marks a class whose file changed"

@@ -26,7 +26,8 @@
         [(cond-> {:from (:from e)
                   :to (:to e)
                   :violating (boolean (:violating e))}
-           (:changed e) (assoc :changed (:changed e)))])))
+           (:changed e) (assoc :changed (:changed e))
+           (:sites e) (assoc :sites (:sites e)))])))
 
 (defn- edge-paths [e]
   (or (seq (:strokes e))

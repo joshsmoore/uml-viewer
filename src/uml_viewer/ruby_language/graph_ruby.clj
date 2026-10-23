@@ -258,12 +258,15 @@
                               :super (some-> (.group m 5) split-const)}))))))))
 
 (defn- refs-of [text holes]
-  (let [m (re-matcher #"(?<![\w@$:.?])(::)?([A-Z]\w*(?:::[A-Z]\w*)*)" text)]
+  (let [m (re-matcher #"(?<![\w@$:.?])(::)?([A-Z]\w*(?:::[A-Z]\w*)*)(?:(?:\.|::)([a-z_]\w*[?!]?))?" text)]
     (loop [acc []]
       (if (.find m)
         (recur (if (in-hole? holes (.start m))
                  acc
-                 (conj acc {:top? (some? (.group m 1)) :segs (split-const (.group m 2))})))
+                 (conj acc (cond-> {:top? (some? (.group m 1))
+                                    :segs (split-const (.group m 2))
+                                    :pos (.start m)}
+                             (.group m 3) (assoc :call (.group m 3))))))
         acc))))
 
 (defn- mixins-of [text holes]
@@ -318,7 +321,7 @@
                  acc
                  (if-let [t (association-target (.group m 1) (.group m 2)
                                                 (statement-text text (.start m)))]
-                   (conj acc t)
+                   (conj acc {:segs t :pos (.start m)})
                    acc)))
         acc))))
 
@@ -365,16 +368,39 @@
        (#(into % (map (fn [e] {:name (:name e) :text (:name e)})) (grape/endpoints text)))
        (reduce (fn [acc op] (if (some #(= (:name op) (:name %)) acc) acc (conj acc op))) [])))
 
+(defn- members-of
+  "Each method and HTTP endpoint as `{:name :line}`, named as its op."
+  [text]
+  (let [starts (graph/line-starts text)
+        m (re-matcher #"(?m)^[ \t]*(?:(?:private|protected|public)[ \t]+)?def[ \t]+(?:self\.)?([A-Za-z_]\w*[?!=]?)" text)
+        defs (loop [acc []]
+               (if (.find m)
+                 (recur (conj acc {:name (.group m 1) :line (graph/line-at starts (.start m))}))
+                 acc))]
+    (into defs (grape/endpoints text))))
+
+(defn- located
+  "`x` with the 1-based `:line` of its `:pos` and the member it sits in."
+  [text starts members x]
+  (let [line (graph/line-at starts (:pos x))]
+    (cond-> (assoc (dissoc x :pos) :line line)
+      (graph/enclosing-member text members line)
+      (assoc :in (graph/enclosing-member text members line)))))
+
 (defn read-file
   "Surface of Ruby `source`: declarations, constant references, mixins,
-  requires, associations, and public methods."
+  requires, associations, and methods. References and associations carry
+  their `:line` and the `:in` member they sit in."
   [source]
-  (let [{:keys [text holes]} (mask-source source)]
+  (let [{:keys [text holes]} (mask-source source)
+        starts (graph/line-starts text)
+        members (members-of text)
+        locate (partial located text starts members)]
     {:decls (declarations text holes)
-     :refs (refs-of text holes)
+     :refs (mapv locate (refs-of text holes))
      :mixins (mixins-of text holes)
      :requires (requires-of text holes)
-     :associations (associations-of text holes)
+     :associations (mapv locate (associations-of text holes))
      :ops (ops-of text)
      :concern? (boolean (re-find #"(?m)^[ \t]*extend[ \t]+(?:::)?ActiveSupport::Concern\b" text))}))
 
@@ -504,12 +530,16 @@
         supers (some-> (:super primary) vector)
         inherit (split-found ctx scope supers)
         mixins (split-found ctx scope (:mixins surface))
-        refs (keep #(resolved ctx scope (:segs %) (:top? %)) (:refs surface))
-        assocs (keep #(resolved ctx scope % false) (:associations surface))
+        ref-hits (keep (fn [r] (when-let [id (resolved ctx scope (:segs r) (:top? r))] [id r]))
+                       (:refs surface))
+        assoc-hits (keep (fn [a] (when-let [id (resolved ctx scope (:segs a) false)] [id a]))
+                         (:associations surface))
         req (require-facts ctx m)]
     {:inherits (:ids inherit)
      :impls (:ids mixins)
-     :requires (vec (distinct (concat refs assocs (:requires req))))
+     :sites (graph/sites-by-target
+              (map (fn [[id x]] [id (select-keys x [:line :in :call])]) (concat ref-hits assoc-hits)))
+     :requires (vec (distinct (concat (map first ref-hits) (map first assoc-hits) (:requires req))))
      :foreigns (vec (distinct (concat (:foreign inherit) (:foreign mixins) (:foreigns req))))}))
 
 (defn- stereotype [m implemented]
@@ -528,11 +558,13 @@
     (stereotype m implemented) (assoc :stereotype (stereotype m implemented))))
 
 (defn- edges-of [id facts]
-  (graph/member-edges (assoc facts :id id)
-                      [[:impls :implements]
-                       [:inherits :inheritance]
-                       [:requires :dependency]
-                       [:foreigns :dependency]]))
+  (graph/with-sites
+    (graph/member-edges (assoc facts :id id)
+                        [[:impls :implements]
+                         [:inherits :inheritance]
+                         [:requires :dependency]
+                         [:foreigns :dependency]])
+    (:sites facts)))
 
 (defrecord RubyGraph []
   graph/LanguageGraph

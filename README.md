@@ -235,7 +235,16 @@ or the language scanner does.
   up a level, including after drilling a proposal group. Esc does not quit.
   **Quit** (top right) or a `:quit-for-restart` mail message exits the app.
 - Hover an arrow for a popup of every class-level `from -> to` it bundles,
-  in any declutter mode. Violating pairs are red and listed first; a long
+  in any declutter mode. Click the arrow to pin that list (Esc or a click
+  elsewhere drops it). A pinned list shows each pair's **call sites** under
+  it, as `member:line → call`. Click a pair or a site to open the `from`
+  file with every site of that pair underlined in the arrow's color (red
+  violating, cyan new, magenta removed, grey otherwise), scrolled to the
+  one clicked. Under review, the file is read as of the PR head. Ruby and
+  Python record sites; for other languages, or a pair with none, the line
+  that first refers to the `to` class is underlined instead: a line naming
+  its full namespace, else an import naming its last segment, else its
+  class name. Violating pairs are red and listed first; a long
   list ends with `… n more`. Inside a drilled view, a port (the stub for an
   arrow that leaves the view) is red when any pair through it is violating,
   and hovering it shows the same list.
@@ -632,7 +641,11 @@ docstring are skipped. A module whose public classes are only `Protocol` or
 `ABC` bases, with no public functions, is `:stereotype :interface`. A
 package's `__init__.py` importing a module inside that package is a
 re-export, shown by nesting, not a dependency; its imports from outside
-the package stay.
+the package stay. Each later use of a name an import bound (or of a dotted
+path a plain `import` named) is a **call site** on its edge, with the
+function or `Class.method` it sits in and an attribute read off it, as
+`:sites [{:line :in :call}]`. Uses inside strings and imports do not count.
+At most 20 per edge.
 
 **Ruby** (`uml-viewer.ruby-language.graph-ruby`) emits one class per `.rb`
 file. Point `:src` at a Rails project root and it scans `app` and `lib`.
@@ -671,7 +684,10 @@ Sinatra-style) verb blocks are `:ops` too, after the methods, named by
 verb and nested path: `get :callback do` inside `namespace :auth do` is
 `GET auth/callback`, `route_param :id` adds `:id`, and a bare `get do`
 is `GET /`. Their parsing lives in `uml-viewer.ruby-language.grape`, so a
-branch change inside an endpoint marks that endpoint.
+branch change inside an endpoint marks that endpoint. Each constant
+reference and association is a **call site** on its edge: `:sites
+[{:line :in :call}]`, the line, the method or endpoint it sits in, and a
+`.method` called on the constant. At most 20 per edge.
 
 ```clojure
 {:lang :ruby :src "." :prefix "app"

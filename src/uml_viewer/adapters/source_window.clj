@@ -87,41 +87,56 @@
                      "</pre></td></tr>"))
               lines)))
 
+(defn- mark-style
+  "Underline in `color` for a line a relationship points at."
+  [color]
+  (str " style='text-decoration:underline;text-decoration-color:" color
+       ";text-decoration-thickness:2px;text-underline-offset:3px'"))
+
 (defn- diff-lines->html
-  [source highlight-line diff]
+  [source highlight-line diff marks]
   (let [lines (str/split (or source "") #"\r?\n" -1)
         added (added-lines diff (count lines))
-        removed (removed-before diff)]
+        removed (removed-before diff)
+        marked (set (:lines marks))]
     (str
       (->> lines
            (map-indexed (fn [idx line]
                           (let [n (inc idx)
-                                hl? (and highlight-line (= n highlight-line))
+                                here? (and highlight-line (= n highlight-line))
+                                hl? (and here? (empty? marked))
                                 classes (cond hl? "hl" (added n) "add" :else "")
                                 line-html (colorize-clojure-html (expand-tabs line))
                                 visible-line (if (str/blank? line-html) "&nbsp;" line-html)]
                             (str (removed-rows (get removed n))
                                  "<tr class='" classes "'>"
                                  "<td class='ln'>"
-                                 (when hl? "<a name='here'></a>")
+                                 (when here? "<a name='here'></a>")
                                  n "</td>"
-                                 "<td class='code'><pre>" visible-line "</pre></td>"
+                                 "<td class='code'><pre"
+                                 (when (marked n) (mark-style (:color marks)))
+                                 ">" visible-line "</pre></td>"
                                  "</tr>"))))
            (apply str))
       (removed-rows (mapcat val (filter #(> (key %) (count lines)) removed))))))
 
 (defn source-lines->html
-  ([source] (source-lines->html source nil nil))
-  ([source highlight-line] (source-lines->html source highlight-line nil))
-  ([source highlight-line diff]
+  "Rows for `source`: `highlight-line` is scrolled to (and shaded yellow
+  unless `marks` are given), `diff` shades the branch's changes, and
+  `marks` `{:lines :color}` underlines the lines a relationship points at."
+  ([source] (source-lines->html source nil nil nil))
+  ([source highlight-line] (source-lines->html source highlight-line nil nil))
+  ([source highlight-line diff] (source-lines->html source highlight-line diff nil))
+  ([source highlight-line diff marks]
    (if (:deleted-file diff)
      (removed-rows (str/split (or source "") #"\r?\n" -1))
-     (diff-lines->html source highlight-line diff))))
+     (diff-lines->html source highlight-line diff marks))))
 
 (defn source->html
-  ([title source] (source->html title source nil nil))
-  ([title source highlight-line] (source->html title source highlight-line nil))
-  ([title source highlight-line diff]
+  ([title source] (source->html title source nil nil nil))
+  ([title source highlight-line] (source->html title source highlight-line nil nil))
+  ([title source highlight-line diff] (source->html title source highlight-line diff nil))
+  ([title source highlight-line diff marks]
    (str "<html><head><style>"
         "body{margin:0;padding:0;background:#f8fafc;color:#111827;font-family:Menlo,Monaco,Consolas,monospace;}"
         ".hdr{padding:10px 12px;background:#e5e7eb;border-bottom:1px solid #cbd5e1;font-family:sans-serif;font-size:13px;}"
@@ -144,7 +159,7 @@
         "<div class='hdr'>" (html-escape title)
         (when (:base diff) (str " · diff vs " (html-escape (:base diff))))
         "</div>"
-        "<div class='src'><table>" (source-lines->html source highlight-line diff) "</table></div>"
+        "<div class='src'><table>" (source-lines->html source highlight-line diff marks) "</table></div>"
         "</body></html>")))
 
 (defn- source-for-member [source-impl ident]
@@ -168,11 +183,17 @@
   "`{:title :html :line}` for a member's source, or nil when it cannot be
   found. `source-impl` satisfies `LanguageSource`. `ident` is a source
   identity map. An ident `:diff` (from branch-diff/file-diff, plus
-  `:base`) shades the branch's changes."
+  `:base`) shades the branch's changes; an ident `:line` scrolls to that
+  line of the file, shaded yellow unless `:marks` `{:lines :color}`
+  underline the lines a relationship points at instead."
   [source-impl ident]
   (let [diff (:diff ident)
-        ident (dissoc ident :diff)]
+        at (:line ident)
+        marks (:marks ident)
+        ident (dissoc ident :diff :line :marks)]
     (when-let [{:keys [title body line]} (member-or-file source-impl ident diff)]
-      {:title title
-       :line line
-       :html (source->html title body line diff)})))
+      (let [line (or at line)
+            title (cond-> title at (str ":" at))]
+        {:title title
+         :line line
+         :html (source->html title body line diff marks)}))))

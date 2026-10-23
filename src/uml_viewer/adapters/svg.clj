@@ -346,53 +346,87 @@
          (str "  (" (name (:kind d)) ")"))
        (dep-change-tag (:changed d))))
 
+(defn site-label [{:keys [line in call]}]
+  (str "    " (or in "top level") ":" line (when call (str "  → " call))))
+
+(defn- pair-rows [d sites?]
+  (cons {:text (dep-label d) :violating (:violating d) :dep d}
+        (when sites?
+          (map (fn [s] {:text (site-label s) :dep d :site s :violating (:violating d)})
+               (:sites d)))))
+
 (defn popup-lines
   "Popup rows for an arrow's pairs: a count header when it bundles more
-  than one, violating pairs first, capped with a `… n more` row."
-  [deps]
+  than one, violating pairs first, capped with a `… n more` row. With
+  `sites?`, each pair is followed by its call sites."
+  ([deps] (popup-lines deps false))
+  ([deps sites?]
   (let [deps (vec (sort-by (juxt (complement :violating)
                                  #(name (:from %))
                                  #(name (:to %)))
                            (distinct deps)))
         bad (count (filter :violating deps))
-        shown (take popup-max-lines deps)
-        more (- (count deps) (count shown))]
+        rows (mapcat #(pair-rows % sites?) deps)
+        shown (take popup-max-lines rows)
+        more (- (count (filter #(and (:dep %) (not (:site %))) rows))
+                (count (filter #(and (:dep %) (not (:site %))) shown)))]
     (cond-> []
       (> (count deps) 1)
       (conj {:text (str (count deps) " pairs" (when (pos? bad) (str ", " bad " violating")))
              :header true})
-      true (into (map (fn [d] {:text (dep-label d) :violating (:violating d)}) shown))
-      (pos? more) (conj {:text (str "… " more " more") :header true}))))
+      true (into shown)
+      (pos? more) (conj {:text (str "… " more " more") :header true})))))
 
 (defn- dep-triangle [ind]
   (polygon (:triangle ind) (paint (if (:violating ind) violation muted))))
 
+(def ^:private popup-line-h 16)
+(def ^:private popup-pad 8)
+
+(def pinned-hint "Click a pair or a call site to open its source")
+
+(defn popup-layout
+  "Box and row rects for an arrow's pair list at `pointer`, kept inside
+  the window. A `pinned?` list starts with a hint row."
+  [deps pointer {:keys [w h]} pinned?]
+  (let [rows (cond->> (popup-lines deps pinned?)
+               pinned? (into [{:text pinned-hint :header true}]))
+        tw (apply max 40 (map (comp layout/text-w :text) rows))
+        box-w (+ (* 2 popup-pad) tw)
+        box-h (+ (* 2 popup-pad) (* popup-line-h (count rows)))
+        [mx my] pointer
+        x (max 8 (min (double mx) (max 8.0 (- w box-w 8))))
+        y (let [below (+ (double my) 16)]
+            (if (< (+ below box-h) h)
+              below
+              (max 8.0 (- (double my) box-h 8))))]
+    {:box {:x x :y y :w box-w :h box-h}
+     :rows (map-indexed (fn [i row]
+                          (assoc row :rect {:x x :y (+ y popup-pad (* i popup-line-h))
+                                            :w box-w :h popup-line-h}))
+                        rows)}))
+
+(defn popup-row-at
+  "The pair row of a pinned popup under window `x`,`y`, or nil."
+  [layout x y]
+  (some #(when (and (:dep %) (geom/inside? (:rect %) x y)) %) (:rows layout)))
+
 (defn edge-popup
-  "Hover box listing an arrow's dependency pairs, kept inside the window."
-  [hover pointer {:keys [w h]}]
+  "Box listing an arrow's dependency pairs: under the pointer while
+  hovering, or pinned where the arrow was clicked."
+  [hover pointer dims pinned?]
   (when (and (#{:edge :dep :port} (:kind hover)) (seq (:deps hover)) (seq pointer))
-    (let [rows (popup-lines (:deps hover))
-          line-h 16
-          pad 8
-          tw (apply max 40 (map (comp layout/text-w :text) rows))
-          box-w (+ (* 2 pad) tw)
-          box-h (+ (* 2 pad) (* line-h (count rows)))
-          [mx my] pointer
-          x (max 8 (min (double mx) (max 8.0 (- w box-w 8))))
-          y (let [below (+ (double my) 16)]
-              (if (< (+ below box-h) h)
-                below
-                (max 8.0 (- (double my) box-h 8))))
-          box {:x x :y y :w box-w :h box-h}]
+    (let [{:keys [box rows]} (popup-layout (:deps hover) pointer dims pinned?)]
       (list
-        (rect box 4 (merge (paint [18 22 24] 240) (pen line 1)))
-        (map-indexed (fn [i row]
-                       (text (:text row) (+ x pad) (+ y pad (* i line-h))
-                             {:size 12
-                              :ink (cond (:violating row) violation
-                                         (:header row) gold
-                                         :else ink)}))
-                     rows)))))
+        (rect box 4 (merge (paint [18 22 24] 240) (pen (if pinned? gold line) 1)))
+        (map (fn [row]
+               (text (:text row) (+ (:x box) popup-pad) (:y (:rect row))
+                     {:size 12
+                      :ink (cond (:violating row) violation
+                                 (:header row) gold
+                                 (:site row) muted
+                                 :else ink)}))
+             rows)))))
 
 (defn- button [r label]
   (list (rect r 4 (paint [42 61 54]))
@@ -593,7 +627,9 @@
    (diagram-banner state)
    (nav-label state)
    (branch-banner state)
-   (edge-popup (:hover state) (:pointer state) dims)])
+   (if-let [{:keys [hit pointer]} (:pinned state)]
+     (edge-popup hit pointer dims true)
+     (edge-popup (:hover state) (:pointer state) dims false))])
 
 (defn detail-row-color [row]
   (case (:kind row)

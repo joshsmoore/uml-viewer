@@ -120,6 +120,27 @@
   (it "finds nothing outside a class"
     (should= [] (:methods (py/read-module "def f():\n    def g():\n        pass\n")))))
 
+(describe "python call sites"
+  (it "puts each use of an imported name on the edge, with its member and attribute"
+    (let [dir (temp-root)]
+      (spit-file dir "src/app/__init__.py" "")
+      (spit-file dir "src/app/auth.py" "def refuse_key():\n    pass\n")
+      (spit-file dir "src/app/main.py"
+                 (str "from app import auth\n"
+                      "\n"
+                      "def init():\n"
+                      "    x = auth.refuse_key\n"
+                      "    return \"auth.not_this\"\n"
+                      "\n"
+                      "class App:\n"
+                      "    def run(self):\n"
+                      "        auth.refuse_key()\n"))
+      (let [g (graph/scan (graph/lookup :python) (io/file dir "src") {:prefix "app"})
+            e (first (filter #(= [:main :auth] [(:from %) (:to %)]) (:edges g)))]
+        (should= [{:line 4 :in "init" :call "refuse_key"}
+                  {:line 9 :in "App.run" :call "refuse_key"}]
+                 (:sites e))))))
+
 (describe "python graph"
   (it "scans a package, skips tests, and marks inheritance and protocols"
     (let [dir (temp-root)]

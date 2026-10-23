@@ -58,6 +58,12 @@
              (map second (rows (source-window/source-lines->html
                                  src nil {:deleted-file true})))))
 
+  (it "underlines marked lines in their color instead of shading the scroll line"
+    (let [doc (source-window/source-lines->html src 2 nil {:lines #{2 4} :color "rgb(1,2,3)"})]
+      (should= ["" "" "" "" ""] (map second (rows doc)))
+      (should= 2 (count (re-seq #"text-decoration-color:rgb\(1,2,3\)" doc)))
+      (should (str/includes? doc "name='here'"))))
+
   (it "names the base in the header"
     (should (str/includes? (source-window/source->html "f.rb" src nil
                                                         {:hunks [] :base "main"})
@@ -90,6 +96,14 @@
           (should= "a.rb (deleted)" (:title page))
           (should-be-nil (:line page))
           (should (str/includes? (:html page) "class='del'"))))))
+
+  (it "highlights an explicit line of the file"
+    (with-redefs [uml-viewer.source/member-source
+                  (fn [_ ident] (when-not (:name ident) {:title "a.py" :body "x\ny\nz\n" :line nil}))]
+      (let [page (source-window/member-page :fallback {:ns "a" :file "a.py" :line 2})]
+        (should= "a.py:2" (:title page))
+        (should= 2 (:line page))
+        (should (str/includes? (:html page) "name='here'")))))
 
   (it "reads a pull request member from the diff text, not the disk"
     (with-redefs [uml-viewer.source/member-source (fn [& _] (throw (Exception. "disk read")))

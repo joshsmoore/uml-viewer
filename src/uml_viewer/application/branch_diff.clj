@@ -3,6 +3,7 @@
   (:require [clojure.java.io :as io]
             [clojure.java.shell :as sh]
             [clojure.string :as str]
+            [uml-viewer.graph :as graph]
             [uml-viewer.source :as source]))
 
 (defn- run
@@ -158,31 +159,10 @@
     :modified {:hunks (parse-diff (hunks-out root changes path))}
     nil))
 
-(defn- indent [line]
-  (count (re-find #"^[ \t]*" line)))
-
-(defn- closer? [line]
-  (boolean (re-matches #"\s*(end\b.*|[}\])]+[;,]?\s*)" line)))
-
-(defn member-end
-  "Last line of the member starting at 1-based line `start` of `text`:
-  the line before the first later non-blank line indented no deeper,
-  or that line itself when it closes the member (`end`, `}`). Never
-  past `limit`."
-  [text start limit]
-  (let [src (str/split-lines text)
-        own (indent (nth src (dec start) ""))
-        stop (some (fn [n]
-                     (let [line (nth src (dec n))]
-                       (when (and (not (str/blank? line)) (<= (indent line) own))
-                         (if (closer? line) n (dec n)))))
-                   (range (inc start) (inc (count src))))]
-    (min limit (or stop (count src)))))
-
 (defn changed-ops
   "Op name to :added or :modified. An op absent from `base-text` is new;
   one whose span holds a changed line is modified. A span runs from the
-  op's start line to its `member-end`, and never into the next op.
+  op's start line to its `graph/member-end`, and never into the next op.
   Language-neutral: uses the extractor registered for `lang`, and marks
   nothing without one."
   [lang base-text text lines ops]
@@ -194,7 +174,7 @@
                       (sort-by second)
                       vec)
           limits (conj (mapv (comp dec second) (rest starts)) Long/MAX_VALUE)
-          ends (mapv (fn [[_ start] limit] (member-end text start limit)) starts limits)]
+          ends (mapv (fn [[_ start] limit] (graph/member-end text start limit)) starts limits)]
       (into {}
             (keep (fn [[[nm start] end]]
                     (cond

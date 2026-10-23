@@ -106,3 +106,20 @@
       (should= "(ns d)\n(defn go [])\n" (:body found))
       (should-be-nil (source/text-source impl {:file "x" :name "nope"} "(ns d)\n"))
       (should-be-nil (source/text-source impl {:file "x" :name "go"} nil)))))
+
+(describe "reference lines"
+  (let [py "import os\nfrom app.utils import authentication\n\nx = authentication.ok\n"]
+    (it "finds the import that names a module's last segment"
+      (should= 2 (source/reference-line py {:ns "app.utils.authentication" :name "Authentication"}))))
+
+  (it "prefers the full namespace, then the class name"
+    (should= 3 (source/reference-line "(ns a\n  (:require\n   [demo.b-c :as bc]))\n" {:ns "demo.b-c"}))
+    (should= 2 (source/reference-line "class A\n  def x = CheckHistory.where(id: 1)\nend\n"
+                                      {:ns "app.models.check-history" :name "CheckHistory"}))
+    (should= 1 (source/reference-line "from app.models import check_history\n"
+                                      {:ns "app.models.check-history" :name "CheckHistory"})))
+
+  (it "matches whole words only, and is nil without a reference"
+    (should= 2 (source/reference-line "import connexions\nimport connexion\n" {:id :connexion :name "connexion"}))
+    (should-be-nil (source/reference-line "x = 1\n" {:ns "app.db" :name "Db"}))
+    (should-be-nil (source/reference-line nil {:ns "app.db"}))))

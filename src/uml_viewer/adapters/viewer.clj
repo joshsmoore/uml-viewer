@@ -2,9 +2,11 @@
   "Browser input applied to the viewer state. Each handler returns
   `{:state s :reply r}`; the reply tells the page to open a menu or a
   source view."
-  (:require [clojure.string :as str]
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [uml-viewer.adapters.companion :as companion]
             [uml-viewer.adapters.markup :as markup]
+            [uml-viewer.adapters.palette :as palette]
             [uml-viewer.adapters.source-window :as source-window]
             [uml-viewer.adapters.svg :as svg]
             [uml-viewer.application.branch-diff :as branch-diff]
@@ -12,9 +14,11 @@
             [uml-viewer.application.document :as document]
             [uml-viewer.application.events :as events]
             [uml-viewer.application.overlay :as overlay]
+            [uml-viewer.domain.geom :as geom]
             [uml-viewer.domain.policy :as policy]
             [uml-viewer.engine.hit :as hit]
-            [uml-viewer.engine.layout :as layout]))
+            [uml-viewer.engine.layout :as layout]
+            [uml-viewer.source :as source]))
 
 (def default-window {:w 1500 :h 920})
 
@@ -116,25 +120,18 @@
   (or (#{:port :child} (:kind sel))
       (and (>= n 2) (= :class (:kind sel)))))
 
+(defn- pins? [right? sel]
+  (and (not right?) (#{:edge :dep} (:kind sel)) (seq (:deps sel))))
+
 (defn- canvas-press [state right? x y n]
-  (let [state (events/on-press state x y)
+  (let [state (events/on-press (dissoc state :pinned) x y)
         sel (:selected state)]
     (cond
       (element-menu? right? sel) (element-menu state sel)
+      (pins? right? sel) (done (assoc state :pinned {:hit sel :pointer [x y]}))
       (and (>= n 2) (events/layer-id sel)) (done (events/drill state (events/layer-id sel)))
       (card-hit? sel n) (done (events/select-class state (:id sel)))
       :else (done state))))
-
-(defn on-press
-  "Mouse-down at window `x`,`y`. `right?` for the context button, `n`
-  clicks."
-  [state x y right? n]
-  (let [{:keys [w h]} (window state)
-        state (dissoc state :menu)]
-    (cond
-      (events/regen-hit? x y w h) (done (regen-press state))
-      (>= x (- w layout/sidebar-w)) (sidebar-press state right? x y w)
-      :else (canvas-press state right? x y n))))
 
 (defn on-move [state x y]
   (done (events/on-move state x y)))
@@ -157,9 +154,10 @@
 (defn on-key [state k control?]
   (let [kw (key-of k)]
     (done
-      (if (and (= :esc kw) (:detail-id state) (not control?))
-        (events/close-detail state)
-        (events/on-key state kw (assoc (dims state) :control? control?))))))
+      (cond
+        (and (= :esc kw) (:pinned state) (not control?)) (dissoc state :pinned)
+        (and (= :esc kw) (:detail-id state) (not control?)) (events/close-detail state)
+        :else (events/on-key state kw (assoc (dims state) :control? control?))))))
 
 (defn on-resize [state w h]
   (done (assoc state :window {:w (max 320 w) :h (max 240 h)})))
@@ -180,6 +178,67 @@
   (done state
         (when-let [page (source-window/member-page source-impl (with-branch-diff state ident))]
           {:source page})))
+
+(defn- class-of [state id]
+  (some #(when (= id (:id %)) %) (get-in state [:doc :classes])))
+
+(defn dep-color
+  "CSS color of the arrow a pair rides: violating, changed, or plain."
+  [dep]
+  (palette/css (cond
+                 (:violating dep) palette/violation
+                 (:changed dep) (palette/change-ink (:changed dep))
+                 :else palette/muted)))
+
+(defn dep-ident
+  "Source ident for a class pair: the `from` class's file (read at the PR
+  head when one is under review) with each call site underlined in the
+  arrow's color, scrolled to `site`, else the first site, else the first
+  line that refers to the `to` class. Nil without a file."
+  ([state dep] (dep-ident state dep nil))
+  ([state {:keys [from to sites] :as dep} site]
+   (when-let [c (class-of state from)]
+     (when (:file c)
+       (let [ident (with-branch-diff state (cond-> {:ns (:ns c) :file (:file c)}
+                                             (:lang c) (assoc :lang (:lang c))))
+             text (or (get-in ident [:diff :text])
+                      (let [f (io/file (:file c))] (when (.isFile f) (slurp f))))
+             line (or (:line site)
+                      (:line (first sites))
+                      (source/reference-line text (or (class-of state to) {:id to})))
+             lines (if (seq sites) (set (map :line sites)) (when line #{line}))]
+         (cond-> ident
+           line (assoc :line line)
+           (seq lines) (assoc :marks {:lines lines :color (dep-color dep)})))))))
+
+(defn- pinned-press
+  "A press while a pair list is pinned: a pair row opens its source; a
+  press elsewhere in the list keeps it; outside, nil."
+  [state source-impl x y]
+  (let [{:keys [hit pointer]} (:pinned state)
+        layout (svg/popup-layout (:deps hit) pointer (window state) true)]
+    (cond
+      (svg/popup-row-at layout x y)
+      (let [row (svg/popup-row-at layout x y)]
+        (if-let [ident (dep-ident state (:dep row) (:site row))]
+          (source-reply state source-impl ident)
+          (done state)))
+      (geom/inside? (:box layout) x y) (done state)
+      :else nil)))
+
+(defn on-press
+  "Mouse-down at window `x`,`y`. `right?` for the context button, `n`
+  clicks."
+  ([state x y right? n] (on-press state nil x y right? n))
+  ([state source-impl x y right? n]
+   (let [{:keys [w h]} (window state)
+         state (dissoc state :menu)]
+     (or (when (and (:pinned state) (not right?))
+           (pinned-press state source-impl x y))
+         (cond
+           (events/regen-hit? x y w h) (done (regen-press state))
+           (>= x (- w layout/sidebar-w)) (sidebar-press state right? x y w)
+           :else (canvas-press state right? x y n))))))
 
 (defn on-card-press
   "Click at content `y` on the class card: a member or the module opens
@@ -242,7 +301,7 @@
   (case type
     "resize" (on-resize state (int-of w) (int-of h))
     "move" (on-move state (number-of x) (number-of y))
-    "press" (on-press state (number-of x) (number-of y) (= "2" (str button)) (max 1 (int-of count)))
+    "press" (on-press state source-impl (number-of x) (number-of y) (= "2" (str button)) (max 1 (int-of count)))
     "wheel" (on-wheel state (number-of amount) (yes? horizontal))
     "key" (on-key state key (yes? ctrl))
     "card-press" (on-card-press state source-impl (number-of y))

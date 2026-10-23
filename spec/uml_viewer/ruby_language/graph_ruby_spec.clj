@@ -16,7 +16,7 @@
            (str "uml-rb-" (System/nanoTime))))
 
 (defn- edge? [g from to kind]
-  (boolean (some #(= {:from from :to to :kind kind} %) (:edges g))))
+  (boolean (some #(= {:from from :to to :kind kind} (select-keys % [:from :to :kind])) (:edges g))))
 
 (defn- class-of [g id]
   (first (filter #(= id (:id %)) (:classes g))))
@@ -112,7 +112,8 @@
       (should= [["Shares"] ["Exportable"] ["ActiveSupport" "Concern"]] (:mixins surface))
       (should= [{:kind :require :path "json"} {:kind :require-relative :path "helpers/format"}]
                (:requires surface))
-      (should= [["User"] ["ResumeSection"] ["Category"]] (:associations surface))
+      (should= [["User"] ["ResumeSection"] ["Category"]] (map :segs (:associations surface)))
+      (should= [6 7 9] (map :line (:associations surface)))
       (should (:concern? surface)))))
 
 (def ^:private grape-api
@@ -156,6 +157,31 @@
              (mapv :name (:ops (rb/read-file grape-api))))
     (should= {:name "GET auth/login" :text "GET auth/login"}
              (second (:ops (rb/read-file grape-api))))))
+
+(describe "ruby call sites"
+  (it "records each reference's line, enclosing member, and call"
+    (let [refs (:refs (rb/read-file (str "class Scan\n"
+                                         "  def work\n"
+                                         "    CheckHistory.where(id: 1)\n"
+                                         "  end\n"
+                                         "\n"
+                                         "  namespace :auth do\n"
+                                         "    get :callback do\n"
+                                         "      Analytics::TrackingPlan.name!(\"x\")\n"
+                                         "    end\n"
+                                         "  end\n"
+                                         "end\n")))]
+      (should= [{:segs ["CheckHistory"] :line 3 :in "work" :call "where"}
+                {:segs ["Analytics" "TrackingPlan"] :line 8 :in "GET auth/callback" :call "name!"}]
+               (map #(select-keys % [:segs :line :in :call]) (rest refs)))))
+
+  (it "puts the sites on the edge to the class referred to"
+    (let [root (temp-root)]
+      (spit-file root "app/models/check_history.rb" "class CheckHistory\nend\n")
+      (spit-file root "app/services/scan.rb" "class Scan\n  def work\n    CheckHistory.where(id: 1)\n  end\nend\n")
+      (let [g (graph/scan (graph/lookup :ruby) (str root) {:prefix "app"})
+            e (first (filter #(= [:services.scan :models.check-history] [(:from %) (:to %)]) (:edges g)))]
+        (should= [{:line 3 :in "work" :call "where"}] (:sites e))))))
 
 (describe "ruby names"
   (it "camelizes, keys, and kebabs constants"
