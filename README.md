@@ -45,85 +45,114 @@ policy, not the IR. See [Policy](#policy).
 
 ## Run
 
-Needs Clojure CLI and Java 21+.
+### Prerequisites (macOS, Homebrew)
+
+The viewer needs Java 21+ and the Clojure CLI. The companion needs tmux
+and Claude Code. Pull-request review needs `gh`, signed in.
+
+```bash
+brew install openjdk@21 clojure/tools/clojure tmux gh
+sudo ln -sfn "$(brew --prefix openjdk@21)/libexec/openjdk.jdk" \
+  /Library/Java/JavaVirtualMachines/openjdk-21.jdk
+java -version                  # 21 or newer
+clojure -version
+gh auth login                  # once, for --pr
+```
+
+`claude` must be on your `PATH` (set `CLAUDE_BIN` to use another binary).
+The project must be a git repository; branch and PR review read `origin`.
+
+### Install into a project
+
+From the root of the project you want to view:
+
+```bash
+cd /path/to/the-project
+curl -fsSL https://raw.githubusercontent.com/joshsmoore/uml-viewer/master/scripts/get-uml-viewer -o get-uml-viewer
+chmod +x get-uml-viewer
+UML_VIEWER_REPO_URL=https://github.com/joshsmoore/uml-viewer.git ./get-uml-viewer --install-only
+```
+
+`get-uml-viewer` clones uml-viewer into **gitignored**
+`.uml-viewer/uml-viewer/` (its nested `.git` is invisible to the project's
+repo), adds a `# BEGIN UML-VIEWER` block to `.gitignore`, and writes
+`./uml`. Without `--install-only` it also starts the viewer.
+`UML_VIEWER_REPO_URL` picks the clone source (the script defaults to
+upstream `unclebob/uml-viewer`, which lacks branch and PR review) and
+`UML_VIEWER_REF` the branch (default `master`). Run it again to update the
+clone; reruns leave `.gitignore` as it is.
+
+To run a local checkout of uml-viewer instead of the clone, so its
+uncommitted changes show up, point `./uml` at it:
+
+```bash
+sed -i '' 's#:local/root "[^"]*"#:local/root "/path/to/uml-viewer"#' uml
+```
+
+A later `get-uml-viewer` puts `./uml` back on the clone.
+
+### Start, and find the port
+
+```bash
+./uml                          # viewer + companion; opens the browser
+./uml --pr 2245                # review GitHub PR 2245 (see below)
+cat .uml-viewer/web.edn        # {:port 2xxxx, :url "http://127.0.0.1:2xxxx/"}
+open "$(sed -E 's/.*:url "([^"]+)".*/\1/' .uml-viewer/web.edn)"
+```
+
+`./uml` returns immediately; the viewer is its own JVM running in the
+background. It serves the diagram on `127.0.0.1` and opens it in your
+browser. The port is fixed per project, in 20000–29999 (the next free one
+within 20 if that is taken, else any), and written with the URL to
+**`.uml-viewer/web.edn`**. Reopen the page from there after closing the tab:
+closing the tab does not stop the viewer. A restarted viewer keeps the
+port, so an open page reconnects on its own. The server renders SVG and
+pushes each frame over server-sent events; the page sends clicks, keys,
+and scrolls back. Exceptions and JVM output append to
+**`uml-viewer-log.txt`** in the project (gitignored).
+
+A fresh start also opens a **tmux** session unique to the project
+(`uml-viewer-<project>-<hash>`, recorded in `.uml-viewer/companion.edn`)
+running interactive Claude Code there, in a Terminal window. On start it
+writes a hierarchical policy from the project's namespaces and regenerates
+the IR; until it sends `:display` the canvas reads **Waiting for agent to
+create diagram.** (`R` loads the current EDN without waiting). Type to the
+companion in that window; Esc is the real TUI interrupt. It also runs CRAP,
+mutation, and IR generation after later changes. **Quit** on the page kills
+**only that** tmux session and its window, not other Claude agents; if the
+Claude process dies, tmux respawns it in the same pane. Project-wide rules
+live in `.claude/rules/uml-viewer.md`.
+
+| Command | Who | What |
+|---------|-----|------|
+| `./uml` | anyone | Fresh viewer in a background JVM, opened in the browser. Starts the companion. Waits for `:display`. |
+| `./uml --pr N` (or `-pr N`) | anyone | Same, reviewing pull request N against its base. |
+| `./uml --restart [--pr N\|local]` | **associated agent only** | New JVM, same companion. Restores the last view, including the reviewed PR; `--pr` switches it. |
+| `./uml --help` | anyone | Usage. |
+
+Do **not** pass `--restart` unless you are that companion recycling the
+viewer. A stray `--restart` skips spawning Claude and leaves a diagram
+with no agent. To recycle: write `:quit-for-restart` to
+`.uml-viewer/to-viewer.edn`, wait for the JVM to exit, then
+`./uml --restart`. The new JVM restores depth, pan, zoom, proposal, the
+B and C toggles, and the PR under review (`.uml-viewer/session.edn`). Do
+not SIGKILL. Aliases `:uml-viewer` / `:uml-viewer-restart` still work where
+present.
+
+A missing or unreadable file shows `file not found: …` in the inspector
+instead of throwing.
+
+### Developing uml-viewer
 
 From **this repo**:
 
 ```bash
 clj -M:ir                            # policy → examples/uml-viewer.edn
-clj -M:run
+clj -M:run                           # holds the terminal; prefer ./uml elsewhere
 clj -M:run examples/library.edn
-clj -M:run examples/uml-viewer.edn
 clj -M:run --help
-```
-
-From **any Clojure project** you want to view (no local uml-viewer checkout
-needed):
-
-```bash
-cd /path/to/the-project
-curl -fsSL https://raw.githubusercontent.com/unclebob/uml-viewer/master/scripts/get-uml-viewer -o get-uml-viewer
-chmod +x get-uml-viewer
-./get-uml-viewer               # fetch, write ./uml, start
-./uml                          # later fresh starts (returns immediately)
-./uml --restart                # companion only: new JVM, restore last view
-```
-
-`scripts/get-uml-viewer` is in this repo. It clones uml-viewer into
-**gitignored** `.uml-viewer/uml-viewer/` (a nested `.git` there is invisible
-to the project's repo), writes `./uml`, and starts the viewer. `--install-only`
-skips the start. `UML_VIEWER_REPO_URL` and `UML_VIEWER_REF` override the clone
-source (default `master`).
-
-`./uml` returns immediately (`clojure` in the background, not `clj`/`rlwrap`).
-The diagram is its own JVM: a small HTTP server on `127.0.0.1` that opens the
-viewer in your browser. Its port is fixed per project (20000–29999) and
-recorded in `.uml-viewer/web.edn`, so a restarted viewer comes back where an
-open page is already pointed; the page reconnects on its own. The server
-renders the diagram as SVG and pushes each frame over server-sent events;
-the page sends clicks, keys, and scrolls back. No browser build step, no
-extra dependencies. Exceptions and JVM output append to
-**`uml-viewer-log.txt`** in the project directory (gitignored). `clj -M:run`
-still holds the terminal; prefer `./uml`.
-
-A **tmux** session unique to the examined project starts interactive Claude Code in
-that directory (`--dangerously-skip-permissions --append-system-prompt …`
-plus a launch prompt). Set `CLAUDE_BIN` to pick the `claude` executable. The name is
-`uml-viewer-<project>-<hash>`, stored in `.uml-viewer/companion.edn`. On start
-it writes a hierarchical policy from that project's namespaces and regenerates
-the IR. Type there; Esc is the real TUI interrupt. **Quit** on the page kills
-**only that** tmux session and its Terminal window — other Claude agents stay
-up. Closing the browser tab does not stop the viewer; open it again from
-`.uml-viewer/web.edn` or run `./uml`. If that Claude process dies, tmux respawns it in the same pane. That
-instance also runs `clj -M:crap`, `clj -M:mutate`, and IR generate after later
-changes. Project-wide rules live in `.claude/rules/uml-viewer.md`.
-
-Prefer `./uml` in the examined project (from `get-uml-viewer`). Aliases
-`:uml-viewer` / `:uml-viewer-restart` still work if present.
-
-| Command | Who | What |
-|---------|-----|------|
-| `./uml` | anyone | Fresh viewer in a background JVM, opened in the browser. Starts the companion. Waits for `:display`. |
-| `./uml --restart` | **associated agent only** | New JVM, same companion. Restores the last view. |
-
-Do **not** pass `--restart` unless you are that companion recycling the
-viewer after source changes. A stray `--restart` skips spawning Claude and
-leaves a diagram with no agent. The companion recycles the viewer by
-writing `:quit-for-restart` to `.uml-viewer/to-viewer.edn`, waiting for
-the JVM to exit, then `./uml --restart`. The new JVM restores depth, pan,
-zoom, and which proposal was showing (`.uml-viewer/session.edn`). Do not
-SIGKILL. **Quit** on the page kills only that project's companion, not other
-Claude agents.
-
-On a fresh start the canvas stays blank until the companion sends `:display`,
-with **Waiting for agent to create diagram.** `R` reloads the current EDN
-immediately and does not wait. A missing or unreadable file prints
-`UML viewer: file not found: …` in the inspector instead of throwing.
-
-```bash
 clj -M:spec
 clj -M:cov
-clj -M:ir                            # writes examples/uml-viewer.edn
 clj -M:crap                          # writes .metrics/crap.edn
 clj -M:mutate src/uml_viewer/engine/layout.clj
 ```
@@ -133,6 +162,67 @@ This project's `:crap` alias uses `../clojure/crap4clj`. `:mutate` pins
 `.metrics/` so a clone has numbers without re-running those tools.
 
 Rename or move of a function is a new form: overlay does not match old names.
+
+## Reviewing a branch or pull request
+
+On a branch, or for a pull request, the diagram marks what changed since
+the work left its base. The base is the merge-base, so later work on the
+base is not counted.
+
+**Where the base comes from.** On a local branch it is policy
+`:base-branch`, else the remote's default branch (`origin/HEAD`), else
+`main`, else `master`. Uncommitted edits and new files count. On the base
+itself, or outside git, nothing is marked. A checkout, commit, or stage
+refreshes the marks.
+
+**Pull requests, without a checkout.** `./uml --pr 2245`, or ask the
+companion (it sends `{:op :review-pr :pr 2245}`). The viewer fetches
+`pull/2245/head` into `refs/uml/pr/2245`, takes the PR's base from `gh`
+(else `:base-branch`, else the default base), scans the PR head with the
+diagram's own policy, and marks it against the merge-base exactly as for
+a local branch. A stacked PR is compared with the branch it targets. The
+working tree is never touched, and source views show files as of the PR
+head. **R** re-fetches; offline, the last fetch is used. A PR that cannot be
+read shows the working tree with an error. `--pr local` on restart, or
+`:review-pr` without `:pr`, returns to the working tree. The reviewed PR
+survives a restart.
+
+**What is marked.**
+
+| Mark | Meaning |
+|------|---------|
+| Cyan outline | Class whose file changed |
+| Cyan outline, `new` badge | Class added |
+| Magenta outline, `deleted` badge | Class removed: shown again from the base |
+| `n changed` on a component | How many changed classes are inside, so you can drill toward the work |
+| Cyan arrow | New relationship, or a component arrow bundling some changed pairs |
+| Magenta arrow | Relationship removed: shown again from the base |
+| Dimmed box (with **C**) | Unchanged class kept only as the far end of a changed arrow |
+
+The banner names the base and commit (`PR #2245 vs origin/main @ 5bc30d0 ·
+3 classes changed`). Hovering an arrow lists each class pair with
+`· new`, `· removed`, or `· changed`.
+
+**Keys.** **B** hides or shows every mark. **C** switches between the full
+diagram and only the changes: changed classes, the unchanged far ends of
+changed arrows (dimmed), and arrows that touch a change.
+
+**The class card.** A changed class's card says *Changed*, *New*, or
+*Deleted on this branch*, and tags each member `· changed`, `· new`, or
+`· deleted`, including private ones. A member spans from its declaration
+to where it ends by indentation, never into the next member. Ruby Grape
+endpoints are members too (`GET auth/callback`), so a change inside an
+endpoint marks that endpoint. Deleted members return where they stood in
+the base.
+
+**Source.** Clicking a member of a changed file opens it with the branch
+diff: added and changed lines green, removed lines red. A deleted file
+opens as all-removed; a deleted member opens its file with the diff.
+
+Deleted classes, members, and arrows come from scanning the merge-base with
+the same policy. Each scanned commit is cached in
+`.uml-viewer/base/<commit>-<stamp>.edn`; the stamp changes when the policy
+or the language scanner does.
 
 ## Navigation
 
@@ -149,44 +239,9 @@ Rename or move of a function is a new form: overlay does not match old names.
   list ends with `… n more`. Inside a drilled view, a port (the stub for an
   arrow that leaves the view) is red when any pair through it is violating,
   and hovering it shows the same list.
-- On a branch, classes whose files changed since the branch left its base
-  get a cyan outline; a new class also says `new`, and a component says
-  `n changed` so you can drill toward the work. The base is policy
-  `:base-branch`, else the remote's default branch (`origin/HEAD`), else
-  `main`, else `master`. Changes are measured from the merge-base, so
-  later work on the base is not yours; uncommitted edits and new files
-  count. Any language works: the mark keys on each class's `:file`. The
-  banner names the base and commit, **B** hides or shows the marks,
-  **C** hides every class the branch did not change (and edges to them),
-  except the far end of a new or removed arrow, which stays dimmed, and a
-  checkout, commit, or stage refreshes them. On the base itself, or
-  outside git, nothing is marked. A changed class's card says so and tags
-  each method `· changed` or `· new`; a method spans from its start to the
-  next listed method. Clicking a member of a changed file opens its source
-  with the branch diff: added and changed lines green, removed lines red.
-  Classes and public methods the branch deleted come back as ghosts in
-  magenta: a deleted class is outlined and badged `deleted`, keeps its
-  base edges to classes still shown, and a deleted method is tagged
-  `· deleted`. They come from scanning the merge-base with the same
-  policy, cached in `.uml-viewer/base/<commit>.edn`. Clicking a deleted
-  member opens the removed file, or the current file with its diff.
-  Arrows are compared with the merge-base too: a new relationship is
-  drawn cyan, a removed one comes back magenta, and an arrow between
-  components that bundles some changed pairs is cyan. Hovering lists
-  each pair with `· new`, `· removed`, or `· changed`. **B** hides these
-  colors with the other marks.
-- Review a GitHub pull request without checking it out: `./uml --pr 2245`
-  (or `./uml --restart --pr 2245`), or have the companion send
-  `{:op :review-pr :pr 2245}`. The viewer fetches `pull/2245/head` into
-  `refs/uml/pr/2245`, takes the PR's base from `gh` (else `:base-branch`,
-  else the default base), scans the PR head with the diagram's policy, and
-  marks it against the merge-base exactly as for a local branch. The
-  banner starts `PR #2245`; **C** still switches between the full diagram
-  and only the changes, and source views show files as of the PR head.
-  The working tree is never touched. **R** re-fetches. A PR that cannot be
-  read shows the working tree with an error. `--pr local` on restart, or
-  `:review-pr` without `:pr`, returns to the working tree. The reviewed PR
-  survives a restart.
+- On a branch or a pull request, changed, new, and deleted classes,
+  members, and arrows are marked; **B** hides the marks and **C** shows only
+  the changes. See [Reviewing a branch or pull request](#reviewing-a-branch-or-pull-request).
 - Right-click a class or component for **Refresh CRAP**, **Refresh
   Mutation**, **Refresh All Mutation**, or **Omit**. Each writes
   `to-agent.edn` and wakes the companion. CRAP runs on that class or the
