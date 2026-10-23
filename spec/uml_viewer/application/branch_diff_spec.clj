@@ -234,7 +234,27 @@
                        {:from :app.c :to :quil}]}
           only (bd/changed-only doc)]
       (should= [:app.a :app.c :quil] (mapv :id (:classes only)))
-      (should= [{:from :app.a :to :app.c} {:from :app.c :to :quil}] (:edges only)))))
+      (should= [{:from :app.a :to :app.c} {:from :app.c :to :quil}] (:edges only))))
+
+  (it "keeps the unchanged far end of a changed edge as context"
+    (let [doc {:classes [{:id :a :changed :modified}
+                         {:id :target}
+                         {:id :gone-target}
+                         {:id :bystander}
+                         {:id :other}]
+               :edges [{:from :a :to :target :changed :added}
+                       {:from :a :to :gone-target :changed :deleted}
+                       {:from :target :to :gone-target}
+                       {:from :bystander :to :other}
+                       {:from :a :to :other}]}
+          only (bd/changed-only doc)]
+      (should= [{:id :a :changed :modified}
+                {:id :target :context true}
+                {:id :gone-target :context true}]
+               (:classes only))
+      (should= [{:from :a :to :target :changed :added}
+                {:from :a :to :gone-target :changed :deleted}]
+               (:edges only)))))
 
 (def ^:private current-doc
   {:classes [{:id :a :changed :modified :ops [{:name "keep"}]}
@@ -257,13 +277,33 @@
     (should= [{:name "call" :changed :deleted}] (:ops ((marked-by-id) :b)))
     (should-not-contain :quil (marked-by-id)))
 
+  (it "puts a deleted method back where it stood in the base"
+    (let [doc {:classes [{:id :a :changed :modified
+                          :ops [{:name "H"} {:name "H.keep"} {:name "tail"}]}]}
+          base {:classes [{:id :a :ops [{:name "first-gone"} {:name "H"} {:name "H.gone"}
+                                        {:name "H.keep"} {:name "tail"} {:name "last-gone"}]}]}]
+      (should= ["first-gone" "H" "H.gone" "H.keep" "tail" "last-gone"]
+               (mapv :name (:ops (first (:classes (bd/mark-deleted doc base))))))))
+
   (it "adds deleted methods to a changed class only"
     (should= [{:name "keep"} {:name "gone" :changed :deleted}] (:ops ((marked-by-id) :a)))
     (should= [{:name "same"}] (:ops ((marked-by-id) :c))))
 
-  (it "adds base edges between a deleted class and a shown one"
-    (should= [{:from :a :to :c} {:from :a :to :b}]
+  (it "brings back base edges between shown classes as deleted"
+    (should= [{:from :a :to :c} {:from :a :to :b :changed :deleted}]
              (:edges (bd/mark-deleted current-doc base-doc))))
+
+  (it "marks an edge the base lacks as added, by its ends and kind"
+    (should= [{:from :a :to :c :kind :dependency}
+              {:from :c :to :a :kind :dependency :changed :added}
+              {:from :a :to :c :kind :inheritance :changed :deleted}]
+             (:edges (bd/mark-deleted
+                       {:classes [{:id :a} {:id :c}]
+                        :edges [{:from :a :to :c :kind :dependency}
+                                {:from :c :to :a :kind :dependency}]}
+                       {:classes [{:id :a} {:id :c}]
+                        :edges [{:from :a :to :c :kind :dependency}
+                                {:from :a :to :c :kind :inheritance}]}))))
 
   (it "leaves the document alone without a base"
     (should= current-doc (bd/mark-deleted current-doc nil)))

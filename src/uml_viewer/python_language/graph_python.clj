@@ -299,8 +299,11 @@
   (let [flat (str/replace header #"\s+" " ")]
     (second (re-find #"\)\s*->\s*([A-Za-z_][A-Za-z0-9_]*)\s*:" flat))))
 
-(defn- dunder? [name]
-  (boolean (re-matches #"__\w*__" name)))
+(defn- private-name?
+  "A `_name` or `__name`, but not a dunder such as `__init__`."
+  [name]
+  (and (str/starts-with? name "_")
+       (not (re-matches #"__\w*__" name))))
 
 (defn- defs-of [text holes]
   (let [m (re-matcher #"(?m)^(?:async[ \t]+def|def|class)[ \t]+([A-Za-z_][A-Za-z0-9_]*)" text)]
@@ -308,13 +311,13 @@
       (if (.find m)
         (let [i (.start m)
               name (.group m 1)]
-          (recur (if (or (in-hole? holes i) (dunder? name))
+          (recur (if (in-hole? holes i)
                    acc
                    (let [header (subs text i (statement-end text i))]
                      (conj acc (cond-> (if (str/starts-with? (str/triml header) "class")
                                          {:name name :kind :class :bases (bases-of header)}
                                          {:name name :kind :function :return (return-of header)})
-                                 (str/starts-with? name "_") (assoc :private true)))))))
+                                 (private-name? name) (assoc :private true)))))))
         acc))))
 
 (defn- lines-at [text]
@@ -343,14 +346,14 @@
       {:cls cls
        :body body
        :found (cond-> found
-                (and nm (not (dunder? nm)))
+                nm
                 (conj (cond-> {:class cls :name nm}
-                        (some #(str/starts-with? % "_") [cls nm]) (assoc :private true))))})))
+                        (some private-name? [cls nm]) (assoc :private true))))})))
 
 (defn- methods-of
   "Methods directly inside each module-level class, as `{:class :name}`
-  in order. Dunder methods are skipped; a `_name` method, or any method
-  of a `_Name` class, is `:private`."
+  in order. A `_name` method, or any method of a `_Name` class, is
+  `:private`; a dunder such as `__init__` is public."
   [text holes]
   (:found (reduce (partial method-step holes)
                   {:cls nil :body nil :found []}
@@ -493,19 +496,22 @@
                         (every? marker? (:bases c))))
                  classes))))
 
-(defn- op-map [n private?]
-  (cond-> {:name n :text n} private? (assoc :private true)))
+(defn- op-map [n text private?]
+  (cond-> {:name n :text text} private? (assoc :private true)))
 
 (defn- op-maps
-  "Each def as an op; a class is followed by its methods as
-  `Class.method`. `_private` ones are `:private`."
+  "Each def as an op; a class is `:kind :class`, followed by its methods
+  named `Class.method` with `:owner` the class. `_private` ones are
+  `:private`."
   [defs methods]
   (let [by-class (group-by :class methods)]
     (into []
           (mapcat (fn [d]
-                    (cons (op-map (:name d) (:private d))
+                    (cons (cond-> (op-map (:name d) (:name d) (:private d))
+                            (= :class (:kind d)) (assoc :kind :class))
                           (for [m (get by-class (:name d))]
-                            (op-map (str (:name d) "." (:name m)) (:private m))))))
+                            (assoc (op-map (str (:name d) "." (:name m)) (:name m) (:private m))
+                                   :owner (:name d))))))
           defs)))
 
 (defn- analyze [surface ns-str init? by-ns by-rel]
@@ -563,6 +569,17 @@
     (empty? (:ops c)) (dissoc :ops)
     (nil? (:stereotype c)) (dissoc :stereotype)))
 
+(defn- without-reexports
+  "A package's `__init__.py` importing a module inside its own package
+  re-exports it; that is nesting, not a dependency. Imports from outside
+  the package stay."
+  [m ns-of]
+  (if (:init? m)
+    (let [inside (str (:ns m) ".")]
+      (update m :requires
+              (fn [ids] (vec (remove #(some-> (ns-of %) (str/starts-with? inside)) ids)))))
+    m))
+
 (defrecord PythonGraph []
   graph/LanguageGraph
   (scan [_ root opts]
@@ -576,13 +593,15 @@
                                   (when-not (str/blank? (:relative m))
                                     [(:relative m) (:id m)]))
                                 metas))
+          ns-of (into {} (map (juxt :id :ns) metas))
           parsed (mapv (fn [m]
                          (let [surface (read-module (slurp (:file m)))
                                facts (analyze surface (:ns m) (:init? m) by-ns by-rel)]
-                           (merge m facts
-                                  {:name (graph/module-name (:id m))
-                                   :lang :python
-                                   :file (graph/relative-path (:file m))})))
+                           (-> (merge m facts
+                                      {:name (graph/module-name (:id m))
+                                       :lang :python
+                                       :file (graph/relative-path (:file m))})
+                               (without-reexports ns-of))))
                        metas)
           project-ids (set (map :id parsed))
           foreigns (->> parsed

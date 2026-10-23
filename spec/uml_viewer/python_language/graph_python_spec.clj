@@ -105,8 +105,17 @@
       (should= [{:class "PartnersView" :name "create"}
                 {:class "PartnersView" :name "fetch"}
                 {:class "PartnersView" :name "_private" :private true}
+                {:class "PartnersView" :name "__init__"}
                 {:class "_Hidden" :name "run" :private true}]
                (:methods surface))))
+
+  (it "keeps dunders public and a __mangled name private"
+    (let [surface (py/read-module (str "def __getattr__(name):\n    pass\n\n"
+                                       "def __get_key():\n    pass\n\n"
+                                       "class _App:\n    def __init__(self):\n        pass\n"))]
+      (should= [["__getattr__" nil] ["__get_key" true] ["_App" true]]
+               (mapv (juxt :name :private) (:all-defs surface)))
+      (should= [{:class "_App" :name "__init__" :private true}] (:methods surface))))
 
   (it "finds nothing outside a class"
     (should= [] (:methods (py/read-module "def f():\n    def g():\n        pass\n")))))
@@ -157,12 +166,15 @@
         (should= "Kennel" (:name (by-id :dogs.kennel)))
         (should= ["Animal" "Animal.speak" "walk" "_hidden"] (map :name (:ops (by-id :model))))
         (should= [nil nil nil true] (map :private (:ops (by-id :model))))
+        (should= [{:name "Animal" :text "Animal" :kind :class}
+                  {:name "Animal.speak" :text "speak" :owner "Animal"}]
+                 (take 2 (:ops (by-id :model))))
         (should= ["Fs" "Fs.read"] (map :name (:ops (by-id :fs))))
         (should= :interface (:stereotype (by-id :fs)))
         (should-be-nil (:stereotype (by-id :model)))
-        (should (contains? edges [:app :model :dependency]))
+        (should-not (contains? edges [:app :model :dependency]))
         (should (contains? edges [:dogs :model :dependency]))
-        (should (contains? edges [:dogs :dogs.kennel :dependency]))
+        (should-not (contains? edges [:dogs :dogs.kennel :dependency]))
         (should (contains? edges [:dogs.kennel :model :dependency]))
         (should (contains? edges [:dogs.kennel :model :inheritance]))
         (should (contains? edges [:dogs :model :inheritance]))

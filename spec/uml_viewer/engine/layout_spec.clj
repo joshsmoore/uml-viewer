@@ -466,3 +466,9 @@
       (should= [120.0 80.0] (:p last-op))
       (should= [120.0 80.0] (mapv double tip))
       (should (> (abs (- (second tip) (second behind))) 1.0)))))
+
+(describe "op lines"
+  (it "names a class and qualifies its methods on the box"
+    (should= "class Handler" (layout/op-line {:text "Handler" :kind :class}))
+    (should= "Handler.verify" (layout/op-line {:text "verify" :owner "Handler"}))
+    (should= "decode" (layout/op-line {:text "decode"}))))

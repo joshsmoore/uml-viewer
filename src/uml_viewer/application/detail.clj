@@ -188,7 +188,10 @@
         acc (emit acc :col-header "" {})
         acc (emit acc :stats (:name c) (format-cells (class-metrics c)))]
     (reduce (fn [acc op]
-              (let [label (str (if (:private op) "- " "+ ") (:text op)
+              (let [label (str (when (:owner op) "    ")
+                               (if (:private op) "- " "+ ")
+                               (when (= :class (:kind op)) "class ")
+                               (:text op)
                                (change-tag (:changed op)))]
                 (emit acc :stats label
                       (cond-> (assoc (format-cells (op-metrics op))

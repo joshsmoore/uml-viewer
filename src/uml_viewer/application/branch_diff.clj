@@ -266,45 +266,83 @@
   (cond-> (deleted c)
     (:ops c) (update :ops #(mapv deleted %))))
 
+(defn- deleted-after
+  "Base op name to the deleted ops that followed it; nil keys the ones
+  before any surviving op."
+  [base-ops gone?]
+  (loop [[o & more] base-ops prev nil acc {}]
+    (cond
+      (nil? o) acc
+      (gone? (:name o)) (recur more prev (update acc prev (fnil conj []) (deleted o)))
+      :else (recur more (:name o) acc))))
+
 (defn- with-deleted-ops
-  "Changed class `c` plus the ops its base version had and it lacks."
+  "Changed class `c` plus the ops its base version had and it lacks,
+  each placed where it stood in the base."
   [c base-c]
   (let [names (set (map :name (:ops c)))
-        gone (remove #(names (:name %)) (:ops base-c))]
-    (cond-> c
-      (and (:changed c) (seq gone)) (update :ops (fnil into []) (map deleted gone)))))
+        gone? #(not (names %))]
+    (if (and (:changed c) (some #(gone? (:name %)) (:ops base-c)))
+      (let [after (deleted-after (:ops base-c) gone?)]
+        (assoc c :ops (into (vec (get after nil))
+                            (mapcat #(cons % (get after (:name %))))
+                            (:ops c))))
+      c)))
+
+(defn- edge-key [e]
+  [(:from e) (:to e) (:kind e)])
+
+(defn- mark-edges
+  "`doc`'s edges `base` lacks are `:changed :added`; base edges `doc`
+  lacks, between classes still shown, come back `:changed :deleted`."
+  [doc base]
+  (let [shown (set (map :id (:classes doc)))
+        now (set (map edge-key (:edges doc)))
+        before (set (map edge-key (:edges base)))
+        removed (filter #(and (not (now (edge-key %))) (shown (:from %)) (shown (:to %)))
+                        (:edges base))]
+    (assoc doc :edges
+           (into (mapv #(cond-> % (not (before (edge-key %))) (assoc :changed :added))
+                       (:edges doc))
+                 (map deleted)
+                 removed))))
 
 (defn mark-deleted
   "Add to `doc` what `base` had and the branch removed: classes and ops
-  marked `:changed :deleted`, and base edges that touch a deleted class."
+  marked `:changed :deleted`. Edges are marked against `base` too: new
+  ones `:added`, and removed ones brought back `:deleted`."
   [doc base]
   (if (seq (:classes base))
     (let [base-by-id (into {} (map (juxt :id identity)) (:classes base))
           current (set (map :id (:classes doc)))
           gone (into [] (comp (remove :foreign) (remove #(current (:id %))) (map deleted-class))
-                     (:classes base))
-          gone-ids (set (map :id gone))
-          shown (into current gone-ids)
-          known-edges (set (:edges doc))
-          edges (filter #(and (or (gone-ids (:from %)) (gone-ids (:to %)))
-                              (shown (:from %)) (shown (:to %))
-                              (not (known-edges %)))
-                        (:edges base))]
+                     (:classes base))]
       (-> doc
           (update :classes #(-> (mapv (fn [c] (with-deleted-ops c (base-by-id (:id c)))) %)
                                 (into gone)))
-          (update :edges (fnil into []) edges)))
+          (mark-edges base)))
     doc))
 
 (defn changed-only
   "`doc` keeping only classes this branch changed, foreign libs, and the
-  edges between what is left."
+  unchanged class at the far end of a changed edge, marked `:context`.
+  Edges stay when both ends do and the edge or one end changed."
   [doc]
-  (let [classes (filterv #(or (:changed %) (:foreign %)) (:classes doc))
+  (let [changed-ids (set (map :id (filter :changed (:classes doc))))
+        edge-ends (into #{} (comp (filter :changed) (mapcat (juxt :from :to))) (:edges doc))
+        classes (into []
+                      (keep (fn [c]
+                              (cond
+                                (or (:changed c) (:foreign c)) c
+                                (edge-ends (:id c)) (assoc c :context true)
+                                :else nil)))
+                      (:classes doc))
         ids (set (map :id classes))]
     (assoc doc
            :classes classes
-           :edges (filterv #(and (ids (:from %)) (ids (:to %))) (:edges doc)))))
+           :edges (filterv #(and (ids (:from %)) (ids (:to %))
+                                 (or (:changed %) (changed-ids (:from %)) (changed-ids (:to %))))
+                           (:edges doc)))))
 
 (defn banner
   "One line naming the base and how many `classes` changed, or nil."

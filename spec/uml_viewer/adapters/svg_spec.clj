@@ -87,14 +87,21 @@
 
 (describe "edges"
   (it "inks violating and selected edges"
-    (should= [palette/violation-hot 3.2] (svg/edge-ink {:violating true} true))
-    (should= [palette/violation 2.0] (svg/edge-ink {:violating true} false))
-    (should= [palette/gold 2.2] (svg/edge-ink {} true))
-    (should= [palette/muted 1.4] (svg/edge-ink {} false)))
+    (should= [palette/violation-hot 3.2] (svg/edge-ink {:violating true} true true))
+    (should= [palette/violation 2.0] (svg/edge-ink {:violating true} false true))
+    (should= [palette/gold 2.2] (svg/edge-ink {} true true))
+    (should= [palette/muted 1.4] (svg/edge-ink {} false true)))
+
+  (it "colors a changed arrow by its change unless changes are hidden"
+    (should= [palette/changed 2.0] (svg/edge-ink {:changed :added} false true))
+    (should= [palette/deleted 2.0] (svg/edge-ink {:changed :deleted} false true))
+    (should= [palette/muted 1.4] (svg/edge-ink {:changed :added} false false))
+    (should= [palette/violation 2.0] (svg/edge-ink {:changed :added :violating true} false true))
+    (should= [palette/gold 2.2] (svg/edge-ink {:changed :added} true true)))
 
   (it "draws nothing without two points and a head at the tip"
-    (should-be-nil (svg/edge {:points [[0 0]]} false {:classes []}))
-    (let [e (svg/edge {:strokes [[[0 0] [5 5]]] :tip [5 5] :behind [0 0] :head :triangle} true {})]
+    (should-be-nil (svg/edge {:points [[0 0]]} false {:classes []} true))
+    (let [e (svg/edge {:strokes [[[0 0] [5 5]]] :tip [5 5] :behind [0 0] :head :triangle} true {} true)]
       (should= 1 (count (tagged :polyline e)))
       (should= 1 (count (tagged :polygon e)))
       (should (contains? (strokes e) (palette/css palette/gold)))))
@@ -206,6 +213,12 @@
       (should= "ops.a -> ui.x" (:text (second rows)))
       (should= "ops.b -> ui.x  (implements)" (:text (nth rows 2)))))
 
+  (it "tags a changed pair"
+    (should= "a -> b  · new" (svg/dep-label {:from :a :to :b :changed :added}))
+    (should= "a -> b  (inheritance)  · removed"
+             (svg/dep-label {:from :a :to :b :kind :inheritance :changed :deleted}))
+    (should= "a -> b" (svg/dep-label {:from :a :to :b})))
+
   (it "caps a long list with a remainder row"
     (let [rows (svg/popup-lines (for [i (range 45)] {:from (keyword (str "c" i)) :to :t}))]
       (should= "45 pairs" (:text (first rows)))
@@ -290,6 +303,21 @@
       (should-contain "B" (texts out))
       (should (some #(str/starts-with? % "vs main") (texts out)))
       (should-contain "Inspector" (texts out))))
+
+  (it "dims a box shown only as the far end of a changed arrow"
+    (let [s (update-in (state) [:scene :classes]
+                       (fn [cs] (mapv #(if (= :b (:id %)) (assoc % :context true) %) cs)))
+          veils (filter #(= 150 (Math/round (* 255 (double (or (:fill-opacity (attrs %)) 0)))))
+                        (tagged :rect (svg/world s dims)))]
+      (should= 1 (count veils))
+      (should= 0 (count (filter #(= 150 (Math/round (* 255 (double (or (:fill-opacity (attrs %)) 0)))))
+                                (tagged :rect (svg/world (state) dims)))))))
+
+  (it "colors changed arrows unless B hides changes"
+    (let [s (update-in (state) [:scene :edges] (fn [es] (mapv #(assoc % :changed :added) es)))
+          cyan (palette/css palette/changed)]
+      (should (contains? (strokes (svg/world s dims)) cyan))
+      (should-not (contains? (strokes (svg/world (assoc s :hide-changes true) dims)) cyan))))
 
   (it "shows the waiting message and hides edges when asked"
     (let [s (assoc (state) :waiting true)

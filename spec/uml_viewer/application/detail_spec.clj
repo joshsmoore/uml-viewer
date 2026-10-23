@@ -244,6 +244,18 @@
       (should= :modified (:changed (by-text "+ edit  · changed")))
       (should= :added (:changed (by-text "+ fresh  · new")))))
 
+  (it "lists a class in the file with its methods indented under it"
+    (let [texts (map :text (detail/rows {:class {:name "Auth"
+                                                 :ops [{:name "decode" :text "decode"}
+                                                       {:name "Handler" :text "Handler" :kind :class}
+                                                       {:name "Handler.verify" :text "verify" :owner "Handler"}
+                                                       {:name "Handler._get" :text "_get" :owner "Handler"
+                                                        :private true :changed :added}]}}))]
+      (should-contain "+ decode" texts)
+      (should-contain "+ class Handler" texts)
+      (should-contain "    + verify" texts)
+      (should-contain "    - _get  · new" texts)))
+
   (it "says a class was deleted on this branch and tags deleted methods"
     (let [rows (detail/rows {:class {:name "D" :changed :deleted
                                      :ops [{:name "call" :text "call" :changed :deleted}]}})

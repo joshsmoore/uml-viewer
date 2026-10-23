@@ -554,3 +554,31 @@
           next (document/maybe-reload (assoc s :mtime 0))]
       (should= 7 (get-in next [:branch :pr]))
       (should= :deleted (:changed ((by-id next) :models.b))))))
+
+(def ^:private edge-change-doc
+  {:hierarchical true
+   :classes [{:id :a.x :name "X" :changed :modified}
+             {:id :a.w :name "W"}
+             {:id :b.y :name "Y"}
+             {:id :c.z :name "Z"}]
+   :edges [{:from :a.x :to :b.y :kind :dependency :changed :added}
+           {:from :a.w :to :c.z :kind :dependency}
+           {:from :a.x :to :c.z :kind :dependency :changed :deleted}]})
+
+(defn- scene-edge [scene from to]
+  (first (filter #(and (= from (:from %)) (= to (:to %))) (:edges scene))))
+
+(describe "changed arrows"
+  (it "keep their change when collapsed to components"
+    (let [scene (document/compile-view edge-change-doc "target" [] {})]
+      (should= :added (:changed (scene-edge scene :a :b)))
+      (should= :modified (:changed (scene-edge scene :a :c)))))
+
+  (it "keep their unchanged far ends, dimmed, when only changes show"
+    (let [scene (document/compile-view edge-change-doc "target" [] {:only-changes true})
+          by-id (into {} (map (juxt :id identity)) (:classes scene))]
+      (should= #{:a :b :c} (set (keys by-id)))
+      (should (:context (by-id :b)))
+      (should-not (:context (by-id :a)))
+      (should= :added (:changed (scene-edge scene :a :b)))
+      (should= :deleted (:changed (scene-edge scene :a :c))))))

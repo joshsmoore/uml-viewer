@@ -112,16 +112,20 @@
          :tip tip
          :behind behind}))))
 
-(defn edge-ink [e selected?]
+(defn edge-ink
+  "Stroke color and weight: violations, then the selection, then this
+  branch's change when `changes?`, else muted."
+  [e selected? changes?]
   (cond
     (and (:violating e) selected?) [violation-hot 3.2]
     (:violating e) [violation 2.0]
     selected? [gold 2.2]
+    (and changes? (:changed e)) [(palette/change-ink (:changed e)) 2.0]
     :else [muted 1.4]))
 
-(defn edge [e selected? scene]
+(defn edge [e selected? scene changes?]
   (when-let [drawn (if (:strokes e) e (live-edge e scene))]
-    (let [[c w] (edge-ink e selected?)
+    (let [[c w] (edge-ink e selected? changes?)
           stroke (assoc (pen c w) :stroke-linecap "round")]
       (into [:g]
             (concat
@@ -309,6 +313,13 @@
         (text label (- (geom/right r) 6) (- (geom/bottom r) 4)
               {:size 11 :ink (palette/change-ink (:changed c)) :align [:right :bottom]})))))
 
+(def ^:private context-veil-alpha 150)
+
+(defn context-veil
+  "Dim a box shown only as the far end of a changed arrow."
+  [c]
+  (rect (:rect c) 6 (paint bg context-veil-alpha)))
+
 (defn branch-line
   "Banner naming the base branch and whether highlighting is on, or nil."
   [state]
@@ -326,10 +337,14 @@
 
 (def popup-max-lines 30)
 
+(def ^:private dep-change-tag
+  {:added "  · new" :deleted "  · removed" :modified "  · changed"})
+
 (defn dep-label [d]
   (str (name (:from d)) " -> " (name (:to d))
        (when (and (:kind d) (not= :dependency (:kind d)))
-         (str "  (" (name (:kind d)) ")"))))
+         (str "  (" (name (:kind d)) ")"))
+       (dep-change-tag (:changed d))))
 
 (defn popup-lines
   "Popup rows for an arrow's pairs: a count header when it bundles more
@@ -535,13 +550,14 @@
      (when-not (get-in scene [:diagram :hide-edges])
        (for [e (:edges scene)
              :when (let [b (:draw-bounds e)] (or (nil? b) (view? b)))]
-         (edge e (edge-hot? e sel-id hover) scene)))
+         (edge e (edge-hot? e sel-id hover) scene changes?)))
      (for [sec (:sections scene)]
        (text (or (:title sec) "") layout/pad (:title-y sec) {:size 20 :ink gold}))
      (map package-title packages)
      (for [c (remove :dummy? (:classes scene))
            :when (class-visible? c view?)]
        (list (class-box c (= sel-id (:id c)) (= hover-id (:id c)) hover sel)
+             (when (:context c) (context-veil c))
              (when changes? (change-mark c))))
      (map dep-triangle (:dep-indicators scene))]))
 
