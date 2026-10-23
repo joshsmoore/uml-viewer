@@ -45,9 +45,11 @@ The diagram is already on screen.
   changes. To restart it: write `:quit-for-restart` to
   `.uml-viewer/to-viewer.edn`, wait for the JVM to exit, then
   `./uml --restart`. Do not pass `--restart` except through that
-  wrapper. Do not SIGKILL. Closing the viewer kills only this
-  companion's tmux session, not other Claude agents. If this Claude
-  process dies, tmux respawns it in the same pane.
+  wrapper. Do not SIGKILL. The viewer is a local web page that `./uml`
+  opens; its address is in `.uml-viewer/web.edn`. **Quit** on that page
+  kills only this companion's tmux session, not other Claude agents;
+  closing the tab stops nothing. If this Claude process dies, tmux
+  respawns it in the same pane.
 
 Do not commit or push unless asked. Esc interrupts a turn in this terminal;
 do not kill the process on interrupt.

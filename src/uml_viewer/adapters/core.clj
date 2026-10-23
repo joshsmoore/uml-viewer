@@ -1,5 +1,5 @@
 (ns uml-viewer.adapters.core
-  (:require [uml-viewer.adapters.sketch :as sketch]))
+  (:require [uml-viewer.adapters.web :as web]))
 
 (def help-text
   (str "Usage: clj -M:run [options] [edn-file]\n"
@@ -7,7 +7,8 @@
        "  edn-file          Diagram to watch (default: examples/library.edn).\n"
        "                    A fresh start waits for the companion Claude to send\n"
        "                    :display unless the associated agent recycles\n"
-       "                    the window with :uml-viewer-restart, or you press R.\n"
+       "                    the viewer with :uml-viewer-restart, or you press R.\n"
+       "                    The viewer opens in the browser.\n"
        "\n"
        "  --pr N            Review GitHub pull request N without checking it\n"
        "                    out: fetch its head and diagram it against its base.\n"
@@ -56,6 +57,7 @@
     (if help?
       (do (print help-text) :help)
       (do
-        (sketch/start! path source-impl restart? pr)
-        (println "Watching" path)
-        (println "Double-click a class for its card. Scroll to pan (Shift-scroll for horizontal). Ctrl+/− zoom; Ctrl+0 resets. R reloads. Click the real diagram above Proposals, or a proposal to show it.")))))
+        (let [u (web/start! path source-impl restart? pr)]
+          (println "Watching" path)
+          (println "Viewer at" u)
+          (println "Double-click a class for its card. Scroll to pan (Shift-scroll for horizontal). Ctrl+/− zoom; Ctrl+0 resets. R reloads. Click the real diagram above Proposals, or a proposal to show it."))))))

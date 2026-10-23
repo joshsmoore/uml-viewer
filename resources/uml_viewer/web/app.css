@@ -1,0 +1,38 @@
+:root {
+  --bg: rgb(22,28,32);
+  --panel: rgb(26,36,40);
+  --ink: rgb(236,236,228);
+  --muted: rgb(157,184,168);
+  --gold: rgb(232,196,72);
+  --line: rgb(42,61,54);
+}
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+#stage { position: fixed; inset: 0; user-select: none; }
+#stage svg { display: block; }
+#status { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); padding: 6px 12px;
+  background: rgb(74,40,24); color: var(--ink); border-radius: 4px; font-size: 12px; z-index: 50; }
+#quit { position: fixed; top: 14px; right: 16px; z-index: 10; background: var(--line); color: var(--gold);
+  border: 0; border-radius: 4px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+#card { position: fixed; top: 64px; left: 40px; width: 640px; max-height: calc(100vh - 96px);
+  display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; box-shadow: 0 12px 40px rgba(0,0,0,.5); z-index: 20; }
+#card[hidden], #source[hidden], #menu[hidden], #status[hidden] { display: none; }
+#card header, #source header { display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line);
+  cursor: move; font-size: 13px; color: var(--gold); border-radius: 6px 6px 0 0; }
+#card header button, #source header button { background: none; border: 0; color: var(--muted);
+  font-size: 18px; cursor: pointer; line-height: 1; }
+#card-body { overflow: auto; }
+#card-body .hot { cursor: pointer; }
+#card-body .hot:hover .wash { fill-opacity: .19; }
+#card-body .hot:hover .label { fill: var(--gold); }
+#menu { position: fixed; z-index: 40; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 4px; padding: 4px 0; min-width: 180px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+#menu button { display: block; width: 100%; text-align: left; background: none; border: 0;
+  color: var(--ink); padding: 6px 14px; font-size: 13px; cursor: pointer; }
+#menu button:hover { background: var(--line); color: var(--gold); }
+#source { position: fixed; top: 48px; left: 80px; width: min(960px, calc(100vw - 120px));
+  height: calc(100vh - 96px); display: flex; flex-direction: column; background: #f8fafc;
+  border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 12px 40px rgba(0,0,0,.5); z-index: 30; }
+#source iframe { flex: 1; border: 0; width: 100%; border-radius: 0 0 6px 6px; background: #f8fafc; }

@@ -32,7 +32,7 @@ level.
 
 ## Tech
 
-A live Quil app that lays out and draws UML from an EDN IR. A **policy** plus
+A local web app that lays out and draws UML from an EDN IR. A **policy** plus
 a language-specific parser write the topology; this tool displays it, routes
 the arrows, colors CRAP, and lets you click.
 
@@ -76,7 +76,13 @@ skips the start. `UML_VIEWER_REPO_URL` and `UML_VIEWER_REF` override the clone
 source (default `master`).
 
 `./uml` returns immediately (`clojure` in the background, not `clj`/`rlwrap`).
-The diagram is its own JVM. Exceptions and JVM output append to
+The diagram is its own JVM: a small HTTP server on `127.0.0.1` that opens the
+viewer in your browser. Its port is fixed per project (20000–29999) and
+recorded in `.uml-viewer/web.edn`, so a restarted viewer comes back where an
+open page is already pointed; the page reconnects on its own. The server
+renders the diagram as SVG and pushes each frame over server-sent events;
+the page sends clicks, keys, and scrolls back. No browser build step, no
+extra dependencies. Exceptions and JVM output append to
 **`uml-viewer-log.txt`** in the project directory (gitignored). `clj -M:run`
 still holds the terminal; prefer `./uml`.
 
@@ -85,9 +91,10 @@ that directory (`--dangerously-skip-permissions --append-system-prompt …`
 plus a launch prompt). Set `CLAUDE_BIN` to pick the `claude` executable. The name is
 `uml-viewer-<project>-<hash>`, stored in `.uml-viewer/companion.edn`. On start
 it writes a hierarchical policy from that project's namespaces and regenerates
-the IR. Type there; Esc is the real TUI interrupt. Closing the diagram kills
+the IR. Type there; Esc is the real TUI interrupt. **Quit** on the page kills
 **only that** tmux session and its Terminal window — other Claude agents stay
-up. If that Claude process dies, tmux respawns it in the same pane. That
+up. Closing the browser tab does not stop the viewer; open it again from
+`.uml-viewer/web.edn` or run `./uml`. If that Claude process dies, tmux respawns it in the same pane. That
 instance also runs `clj -M:crap`, `clj -M:mutate`, and IR generate after later
 changes. Project-wide rules live in `.claude/rules/uml-viewer.md`.
 
@@ -96,16 +103,16 @@ Prefer `./uml` in the examined project (from `get-uml-viewer`). Aliases
 
 | Command | Who | What |
 |---------|-----|------|
-| `./uml` | anyone | Fresh window in a background JVM. Starts the companion. Waits for `:display`. |
+| `./uml` | anyone | Fresh viewer in a background JVM, opened in the browser. Starts the companion. Waits for `:display`. |
 | `./uml --restart` | **associated agent only** | New JVM, same companion. Restores the last view. |
 
 Do **not** pass `--restart` unless you are that companion recycling the
-window after source changes. A stray `--restart` skips spawning Claude and
-leaves a diagram with no agent. The companion recycles the window by
+viewer after source changes. A stray `--restart` skips spawning Claude and
+leaves a diagram with no agent. The companion recycles the viewer by
 writing `:quit-for-restart` to `.uml-viewer/to-viewer.edn`, waiting for
 the JVM to exit, then `./uml --restart`. The new JVM restores depth, pan,
 zoom, and which proposal was showing (`.uml-viewer/session.edn`). Do not
-SIGKILL. Closing the window kills only that project's companion, not other
+SIGKILL. **Quit** on the page kills only that project's companion, not other
 Claude agents.
 
 On a fresh start the canvas stays blank until the companion sends `:display`,
@@ -136,7 +143,7 @@ Rename or move of a function is a new form: overlay does not match old names.
   collapse to one arrow. Each component lists nested namespaces.
 - Double-click a component to open the next level. Esc or the ← label goes
   up a level, including after drilling a proposal group. Esc does not quit.
-  The window close box or a `:quit-for-restart` mail message exits the app.
+  **Quit** (top right) or a `:quit-for-restart` mail message exits the app.
 - Hover an arrow for a popup of every class-level `from -> to` it bundles,
   in any declutter mode. Violating pairs are red and listed first; a long
   list ends with `… n more`. Inside a drilled view, a port (the stub for an
@@ -169,7 +176,7 @@ Rename or move of a function is a new form: overlay does not match old names.
   else the default base), scans the PR head with the diagram's policy, and
   marks it against the merge-base exactly as for a local branch. The
   banner starts `PR #2245`; **C** still switches between the full diagram
-  and only the changes, and source windows show files as of the PR head.
+  and only the changes, and source views show files as of the PR head.
   The working tree is never touched. **R** re-fetches. A PR that cannot be
   read shows the working tree with an error. `--pr local` on restart, or
   `:review-pr` without `:pr`, returns to the working tree. The reviewed PR
@@ -202,18 +209,20 @@ Rename or move of a function is a new form: overlay does not match old names.
   **I**. Names of rectangles that are not classes (components/layers,
   interfaces, enumerations, package banners) are italic. Foreign libraries
   listed in policy are ovals outside the components.
-- The main window is resizable.
+- The page fills the browser window and follows its size.
 - Scroll to pan vertically; Shift-scroll (or left/right arrows) for
   horizontal. Pan can follow arrows that bow past the origin.
 - **Ctrl+** (or **Ctrl+=**) zooms in 10%; **Ctrl-** zooms out 10%;
-  **Ctrl+0** restores 100%. Zoom keeps the view center still.
+  **Ctrl+0** restores 100%. **Cmd** works the same, and a trackpad pinch
+  zooms. Zoom keeps the view center still.
 - **Regen** in the inspector asks the companion to rewrite policy and IR
   (see [Companion mailbox](#companion-mailbox)).
 - `R` reloads the current EDN. The watcher also reloads on save, and when
   `.metrics/` snapshots change. An open class card updates with the new
   numbers.
-- `Esc` on the class card closes it (it does not quit the viewer). Closing
-  the main window exits the app.
+- The class card and source views are panels on the page; drag them by
+  their title bar. `Esc` closes the source view, then the class card (it
+  does not quit the viewer).
 
 ## Policy
 
@@ -710,7 +719,7 @@ Layout follows Mermaid's three stages:
 Clicking a member asks `uml-viewer.source` for the **whole file** and a
 **start line**. The IR (and the class card) only supply an **identity
 map**; a language-specific extractor turns that into
-`{:title :file :body :line}`. The source window opens on that file and
+`{:title :file :body :line}`. The source view opens on that file and
 scrolls to the member (highlighted). Clicking the module name opens the same
 file at the top (`:line` omitted).
 
@@ -745,5 +754,7 @@ the endpoint's verb block. The class card passes
 the Clojure extractor that Main passes in. The protocol is the seam; do
 not special-case languages in the class card.
 
-Quil stays in `adapters.draw` and `adapters.sketch`. The rest of the engine
-does not depend on Processing.
+The UI lives in the adapters: `adapters.svg` renders, `adapters.viewer`
+applies page events, `adapters.web` serves the page, and
+`adapters.companion` runs the tmux session. Nothing depends on Quil, Swing,
+or AWT.

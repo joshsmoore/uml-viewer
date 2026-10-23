@@ -7,7 +7,6 @@ set -euo pipefail
 repo_url="${UML_VIEWER_REPO_URL:-https://github.com/unclebob/uml-viewer.git}"
 ref="${UML_VIEWER_REF:-master}"
 tool_dir=".uml-viewer/uml-viewer"
-quil_ver="4.3.1563"
 
 usage() {
   echo "usage: get-uml-viewer [--install-only]" >&2
@@ -64,7 +63,7 @@ fetch_tool() {
 write_uml() {
   local abs deps
   abs="$(cd "$tool_dir" && pwd)"
-  deps="{:deps {uml-viewer/uml-viewer {:local/root \"$abs\"} quil/quil {:mvn/version \"$quil_ver\"}}}"
+  deps="{:deps {uml-viewer/uml-viewer {:local/root \"$abs\"}}}"
   cat > ./uml <<EOF
 #!/bin/zsh
 set -euo pipefail
@@ -105,7 +104,7 @@ launch_viewer() {
 
 if [[ "\${1:-}" == "-h" || "\${1:-}" == "--help" ]]; then
   echo "usage: ./uml [--restart] [--pr N|local]" >&2
-  echo "  (no args)   fresh window; companion writes the diagram" >&2
+  echo "  (no args)   opens the viewer in the browser; companion writes the diagram" >&2
   echo "  --restart   new JVM, same companion; restores last view" >&2
   echo "  --pr N      review GitHub PR N without checking it out" >&2
   echo "  --pr local  with --restart, back to the working tree" >&2

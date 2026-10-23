@@ -1,9 +1,7 @@
 (ns uml-viewer.adapters.source-window
   (:require [clojure.string :as str]
             [uml-viewer.source :as source])
-  (:import [java.awt Dimension]
-           [java.util.regex Pattern]
-           [javax.swing JEditorPane JFrame JScrollPane SwingUtilities]))
+  (:import [java.util.regex Pattern]))
 
 (defn html-escape
   [s]
@@ -149,24 +147,6 @@
         "<div class='src'><table>" (source-lines->html source highlight-line diff) "</table></div>"
         "</body></html>")))
 
-(defn- build-frame!
-  [title body line diff]
-  (let [frame (JFrame. title)
-        editor (JEditorPane. "text/html" (source->html title body line diff))
-        scroll (JScrollPane. editor)]
-    (.setEditable editor false)
-    (.setCaretPosition editor 0)
-    (.setPreferredSize scroll (Dimension. 900 640))
-    (.add (.getContentPane frame) scroll)
-    (.pack frame)
-    (.setLocationByPlatform frame true)
-    (.setVisible frame true)
-    (when line
-      (SwingUtilities/invokeLater
-        (fn []
-          (.scrollToReference editor "here"))))
-    frame))
-
 (defn- source-for-member [source-impl ident]
   (if (:lang ident) (:lang ident) source-impl))
 
@@ -184,21 +164,15 @@
         (or (find ident)
             (when diff (find (dissoc ident :name))))))))
 
-(defn- show-member-window! [title body line diff]
-  (SwingUtilities/invokeLater
-    (fn []
-      (build-frame! title body line diff))))
-
-(defn open-member-window!
-  "Open an independent source window for a member.
-  `source-impl` satisfies `LanguageSource`. `ident` is a source identity
-  map, or `ns-name` plus `member-name`. An ident `:diff` (from
-  branch-diff/file-diff, plus `:base`) shades the branch's changes."
-  ([source-impl ident]
-   (let [diff (:diff ident)
-         ident (dissoc ident :diff)]
-     (when-let [{:keys [title body line]} (member-or-file source-impl ident diff)]
-       (show-member-window! title body line diff)
-       true)))
-  ([source-impl ns-name member-name]
-   (open-member-window! source-impl {:ns ns-name :name member-name})))
+(defn member-page
+  "`{:title :html :line}` for a member's source, or nil when it cannot be
+  found. `source-impl` satisfies `LanguageSource`. `ident` is a source
+  identity map. An ident `:diff` (from branch-diff/file-diff, plus
+  `:base`) shades the branch's changes."
+  [source-impl ident]
+  (let [diff (:diff ident)
+        ident (dissoc ident :diff)]
+    (when-let [{:keys [title body line]} (member-or-file source-impl ident diff)]
+      {:title title
+       :line line
+       :html (source->html title body line diff)})))

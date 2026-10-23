@@ -63,50 +63,40 @@
                                                         {:hunks [] :base "main"})
                            "f.rb · diff vs main"))))
 
-(describe "open-member-window!"
-  (it "chooses the ident lang and does not open a frame when source is missing"
-    (let [calls (atom [])
-          shown (atom nil)]
+(describe "member-page"
+  (it "chooses the ident lang and returns nil when source is missing"
+    (let [calls (atom [])]
       (with-redefs [uml-viewer.source/member-source
                     (fn [impl ident]
                       (swap! calls conj [impl ident])
                       (when (= "go" (:name ident))
-                        {:title "T" :body "(defn go [])" :line 4}))
-                    uml-viewer.adapters.source-window/show-member-window!
-                    (fn [title body line diff]
-                      (reset! shown [title body line diff]))]
-        (should-be-nil (source-window/open-member-window! :fallback {:ns "demo.a"}))
+                        {:title "T" :body "(defn go [])" :line 4}))]
+        (should-be-nil (source-window/member-page :fallback {:ns "demo.a"}))
         (should= [[:fallback {:ns "demo.a"}]] @calls)
-        (should-be-nil @shown)
-        (should= true (source-window/open-member-window!
-                        :fallback {:ns "demo.a" :name "go"}))
-        (should= ["T" "(defn go [])" 4 nil] @shown)
-        (source-window/open-member-window!
-          :fallback {:ns "demo.a" :name "go" :diff {:hunks []}})
+        (let [page (source-window/member-page :fallback {:ns "demo.a" :name "go"})]
+          (should= "T" (:title page))
+          (should= 4 (:line page))
+          (should (str/includes? (:html page) "<div class='hdr'>T</div>")))
+        (source-window/member-page :fallback {:ns "demo.a" :name "go" :diff {:hunks []}})
         (should= [:fallback {:ns "demo.a" :name "go"}] (last @calls))
-        (should= {:hunks []} (last @shown))
-        (source-window/open-member-window!
-          :fallback {:ns "demo.a" :name "go" :lang :rust})
+        (source-window/member-page :fallback {:ns "demo.a" :name "go" :lang :rust})
         (should= [:rust {:ns "demo.a" :name "go" :lang :rust}] (last @calls))
-        (source-window/open-member-window! :fallback "demo.a" "go")
-        (should= [:fallback {:ns "demo.a" :name "go"}] (last @calls))
-        (source-window/open-member-window!
-          :fallback {:ns "demo.a" :name "gone" :diff {:hunks []}})
+        (source-window/member-page :fallback {:ns "demo.a" :name "gone" :diff {:hunks [] :base "main"}})
         (should= [:fallback {:ns "demo.a"}] (last @calls))
         (reset! calls [])
-        (source-window/open-member-window!
-          :fallback {:ns "demo.a" :file "a.rb" :name "x" :diff {:deleted-file true :text "old"}})
-        (should= [] @calls)
-        (should= ["a.rb (deleted)" "old" nil {:deleted-file true :text "old"}] @shown))))
+        (let [page (source-window/member-page
+                     :fallback {:ns "demo.a" :file "a.rb" :name "x" :diff {:deleted-file true :text "old"}})]
+          (should= [] @calls)
+          (should= "a.rb (deleted)" (:title page))
+          (should-be-nil (:line page))
+          (should (str/includes? (:html page) "class='del'"))))))
 
   (it "reads a pull request member from the diff text, not the disk"
-    (let [shown (atom nil)]
-      (with-redefs [uml-viewer.source/member-source (fn [& _] (throw (Exception. "disk read")))
-                    uml-viewer.source/text-source
-                    (fn [_ ident text]
-                      (when (= "go" (:name ident)) {:title "T" :body text :line 2}))
-                    uml-viewer.adapters.source-window/show-member-window!
-                    (fn [title body line diff] (reset! shown [title body line diff]))]
-        (source-window/open-member-window!
-          :fallback {:ns "demo.a" :file "a.rb" :name "go" :diff {:hunks [] :text "pr"}})
-        (should= ["T" "pr" 2 {:hunks [] :text "pr"}] @shown)))))
+    (with-redefs [uml-viewer.source/member-source (fn [& _] (throw (Exception. "disk read")))
+                  uml-viewer.source/text-source
+                  (fn [_ ident text]
+                    (when (= "go" (:name ident)) {:title "T" :body text :line 2}))]
+      (let [page (source-window/member-page
+                   :fallback {:ns "demo.a" :file "a.rb" :name "go" :diff {:hunks [] :text "pr"}})]
+        (should= 2 (:line page))
+        (should (str/includes? (:html page) ">pr<"))))))

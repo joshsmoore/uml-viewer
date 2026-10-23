@@ -1,7 +1,7 @@
 (ns uml-viewer.adapters.core-spec
   (:require [speclj.core :refer :all]
             [uml-viewer.adapters.core :as core]
-            [uml-viewer.adapters.sketch :as sketch]))
+            [uml-viewer.adapters.web :as web]))
 
 (describe "cli args"
   (it "defaults the path and does not restart"
@@ -37,16 +37,17 @@
     (should (:help? (core/parse-args ["-h" "doc.edn"])))
     (should (re-find #"edn-file" core/help-text))
     (should (re-find #"--restart" core/help-text))
-    (with-redefs [sketch/start! (fn [& _] (throw (Exception. "should not start")))]
+    (with-redefs [web/start! (fn [& _] (throw (Exception. "should not start")))]
       (let [ret (atom nil)
             out (with-out-str (reset! ret (core/start! :unused "--help")))]
         (should= :help @ret)
         (should (re-find #"Usage: clj -M:run" out)))))
 
-  (it "starts the sketch when not asking for help"
+  (it "starts the web viewer when not asking for help"
     (let [args (atom nil)]
-      (with-redefs [sketch/start! (fn [& a] (reset! args a) :started)]
+      (with-redefs [web/start! (fn [& a] (reset! args a) "http://127.0.0.1:1/")]
         (let [out (with-out-str (core/start! :src "doc.edn"))]
           (should= ["doc.edn" :src false nil] @args)
           (should (re-find #"Watching" out))
+          (should (re-find #"Viewer at http://127.0.0.1:1/" out))
           (should (re-find #"real diagram above Proposals" out)))))))

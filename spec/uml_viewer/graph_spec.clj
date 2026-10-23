@@ -114,5 +114,5 @@
                (:name (by-id :clojure-language.source-clojure)))
       (should (contains? edges [:clojure-language.source-clojure :source :implements]))
       (should (contains? edges [:application.document :engine.compose :dependency]))
-      (should (:foreign (by-id :quil.core)))
-      (should (contains? edges [:adapters.draw :quil.core :dependency])))))
+      (should (:foreign (by-id :com.sun.net.httpserver)))
+      (should (contains? edges [:adapters.web :com.sun.net.httpserver :dependency])))))

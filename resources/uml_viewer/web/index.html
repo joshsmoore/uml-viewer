@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UML viewer</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div id="stage"></div>
+<div id="status" hidden>Disconnected — waiting for the viewer…</div>
+<button id="quit" type="button" title="Stop the viewer and its Claude session">Quit</button>
+<section id="card" hidden>
+  <header id="card-head"><span id="card-title"></span><button id="card-close" type="button" aria-label="Close">×</button></header>
+  <div id="card-body"></div>
+</section>
+<div id="menu" hidden></div>
+<section id="source" hidden>
+  <header><span id="source-title"></span><button id="source-close" type="button" aria-label="Close">×</button></header>
+  <iframe id="source-frame" title="Source"></iframe>
+</section>
+<script src="/app.js"></script>
+</body>
+</html>

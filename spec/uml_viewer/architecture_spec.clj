@@ -83,13 +83,12 @@
                    :when (and to (> (layer-rank to) (layer-rank from)))]
                {:ns ns-name :requires lib :from from :to to})))
 
-  (it "keeps layout, IR, and hit-testing free of Quil"
-    (should= [] (violations #(not (contains? #{:adapters :main} (layer-of %)))
-                            quil-lib?)))
-
-  (it "confines Processing to draw and sketch"
-    (let [owners (set (map (comp str :ns) (violations (constantly true) quil-lib?)))]
-      (should= #{"uml-viewer.adapters.draw" "uml-viewer.adapters.sketch"} owners)))
+  (it "keeps every namespace free of Quil, Swing, and AWT"
+    (should= [] (violations (constantly true)
+                            #(or (quil-lib? %)
+                                 (#{'javax.swing 'java.awt} %)
+                                 (str/starts-with? (str %) "javax.swing.")
+                                 (str/starts-with? (str %) "java.awt.")))))
 
   (it "keeps source lookup free of Swing and Quil"
     (should= [] (violations #(contains? #{:source} (layer-of %))
