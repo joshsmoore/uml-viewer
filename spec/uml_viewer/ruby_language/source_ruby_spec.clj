@@ -44,4 +44,11 @@
                                "end\n"))
           found (source/member-source {:lang :ruby :file (.getPath file) :name "GET auth/callback"})]
       (should= 3 (:line found))
-      (should-be-nil (source/member-source {:lang :ruby :file (.getPath file) :name "GET auth/nope"})))))
+      (should-be-nil (source/member-source {:lang :ruby :file (.getPath file) :name "GET auth/nope"}))))
+
+  (it "finds a rake task by its namespaced name"
+    (let [file (ruby-file (str "namespace :email_provider do\n"
+                               "  task sync_hubspot: :environment do\n    1\n  end\n"
+                               "end\n"))
+          found (source/member-source {:lang :ruby :file (.getPath file) :name "email_provider:sync_hubspot"})]
+      (should= 2 (:line found)))))

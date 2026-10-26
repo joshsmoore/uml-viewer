@@ -1,10 +1,11 @@
 (ns uml-viewer.ruby-language.graph-ruby
-  "Ruby LanguageGraph: one class per .rb file. Constants resolve the way
-  Zeitwerk autoloads them, so a Rails reference needs no require."
+  "Ruby LanguageGraph: one class per .rb or .rake file. Constants resolve
+  the way Zeitwerk autoloads them, so a Rails reference needs no require."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [uml-viewer.graph :as graph]
-            [uml-viewer.ruby-language.grape :as grape]))
+            [uml-viewer.ruby-language.grape :as grape]
+            [uml-viewer.ruby-language.rake :as rake]))
 
 (def ^:private skip-dir-names
   #{"assets" "javascript" "views" "node_modules" "vendor" "tmp" "log"
@@ -60,7 +61,7 @@
                  (fn [d] (vec (.listFiles d)))
                  dir)
        (filter #(.isFile %))
-       (filter #(str/ends-with? (.getName %) ".rb"))
+       (filter #(or (str/ends-with? (.getName %) ".rb") (rake/rake-file? (.getName %))))
        (remove #(excluded-name? (.getName %)))))
 
 (defn- source-files [root]
@@ -356,28 +357,29 @@
          :ops (cond-> ops op (conj (cond-> op private? (assoc :private true))))}))))
 
 (defn ops-of
-  "Methods, in order, then HTTP endpoints. A method after a bare
-  `private` or `protected` at the same indent, or written `private def`,
-  is `:private`; `initialize` is public. `class << self` and `def self.x`
-  are class methods."
-  [text]
-  (->> (str/split-lines text)
-       (remove str/blank?)
-       (reduce ops-step {:vis {} :selves #{} :ops []})
-       :ops
-       (#(into % (map (fn [e] {:name (:name e) :text (:name e)})) (grape/endpoints text)))
-       (reduce (fn [acc op] (if (some #(= (:name op) (:name %)) acc) acc (conj acc op))) [])))
+  "Methods, in order, then entry points (HTTP endpoints, or the tasks
+  `entries` finds). A method after a bare `private` or `protected` at the
+  same indent, or written `private def`, is `:private`; `initialize` is
+  public. `class << self` and `def self.x` are class methods."
+  ([text] (ops-of text grape/endpoints))
+  ([text entries]
+   (->> (str/split-lines text)
+        (remove str/blank?)
+        (reduce ops-step {:vis {} :selves #{} :ops []})
+        :ops
+        (#(into % (map (fn [e] {:name (:name e) :text (:name e)})) (entries text)))
+        (reduce (fn [acc op] (if (some #(= (:name op) (:name %)) acc) acc (conj acc op))) []))))
 
 (defn- members-of
-  "Each method and HTTP endpoint as `{:name :line}`, named as its op."
-  [text]
+  "Each method and entry point as `{:name :line}`, named as its op."
+  [text entries]
   (let [starts (graph/line-starts text)
         m (re-matcher #"(?m)^[ \t]*(?:(?:private|protected|public)[ \t]+)?def[ \t]+(?:self\.)?([A-Za-z_]\w*[?!=]?)" text)
         defs (loop [acc []]
                (if (.find m)
                  (recur (conj acc {:name (.group m 1) :line (graph/line-at starts (.start m))}))
                  acc))]
-    (into defs (grape/endpoints text))))
+    (into defs (entries text))))
 
 (defn- located
   "`x` with the 1-based `:line` of its `:pos` and the member it sits in."
@@ -390,19 +392,26 @@
 (defn read-file
   "Surface of Ruby `source`: declarations, constant references, mixins,
   requires, associations, and methods. References and associations carry
-  their `:line` and the `:in` member they sit in."
+  their `:line` and the `:in` member they sit in. `entries` finds the
+  entry points listed after the methods; HTTP endpoints by default."
+  ([source] (read-file source grape/endpoints))
+  ([source entries]
+   (let [{:keys [text holes]} (mask-source source)
+         starts (graph/line-starts text)
+         members (members-of text entries)
+         locate (partial located text starts members)]
+     {:decls (declarations text holes)
+      :refs (mapv locate (refs-of text holes))
+      :mixins (mixins-of text holes)
+      :requires (requires-of text holes)
+      :associations (mapv locate (associations-of text holes))
+      :ops (ops-of text entries)
+      :concern? (boolean (re-find #"(?m)^[ \t]*extend[ \t]+(?:::)?ActiveSupport::Concern\b" text))})))
+
+(defn read-rake-file
+  "Surface of a .rake `source`: its tasks are its entry points."
   [source]
-  (let [{:keys [text holes]} (mask-source source)
-        starts (graph/line-starts text)
-        members (members-of text)
-        locate (partial located text starts members)]
-    {:decls (declarations text holes)
-     :refs (mapv locate (refs-of text holes))
-     :mixins (mixins-of text holes)
-     :requires (requires-of text holes)
-     :associations (mapv locate (associations-of text holes))
-     :ops (ops-of text)
-     :concern? (boolean (re-find #"(?m)^[ \t]*extend[ \t]+(?:::)?ActiveSupport::Concern\b" text))}))
+  (read-file source rake/tasks))
 
 ;; Project index and resolution.
 
@@ -411,7 +420,7 @@
                               (.toPath (.getCanonicalFile (io/file file)))))]
     (-> rel
         (str/replace #"\\" "/")
-        (str/replace #"\.rb$" "")
+        (str/replace #"\.(?:rb|rake)$" "")
         (str/split #"/"))))
 
 (defn- under? [file root]
@@ -441,9 +450,10 @@
     :else (str ns-prefix "." relative)))
 
 (defn- file-meta [file root roots prefix ns-prefix]
-  (let [surface (read-file (slurp file))
-        expected (expected-const file roots)
-        primary (primary-decl (:decls surface) expected)
+  (let [rake? (rake/rake-file? (.getName (io/file file)))
+        surface (if rake? (read-rake-file (slurp file)) (read-file (slurp file)))
+        expected (if rake? [] (expected-const file roots))
+        primary (when-not rake? (primary-decl (:decls surface) expected))
         relative (->> (rel-segments file root)
                       (map #(str/replace % "_" "-"))
                       (str/join "."))
@@ -455,14 +465,19 @@
      :const (or (:segs primary) expected)
      :primary primary
      :surface surface
-     :name (if primary (peek (:segs primary)) (graph/module-name id))}))
+     :rake? rake?
+     :name (cond
+             rake? (.getName (io/file file))
+             primary (peek (:segs primary))
+             :else (graph/module-name id))}))
 
 (defn- const-index
   "Constant key to class id. A file's own constant wins over a constant
   that is only nested inside another file. A module that only wraps a
   file's own constant is a namespace, not that file."
   [metas]
-  (let [own (into {} (map (fn [m] [(const-key (:const m)) (:id m)]) metas))
+  (let [metas (remove :rake? metas)
+        own (into {} (map (fn [m] [(const-key (:const m)) (:id m)]) metas))
         nested (for [m metas
                      :let [own-key (const-key (:const m))]
                      d (get-in m [:surface :decls])

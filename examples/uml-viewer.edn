@@ -72,6 +72,7 @@
   {:from :main.uml-viewer, :to :ruby-language.graph-ruby, :kind :dependency}
   {:from :rust-language.source-rust, :to :source, :kind :dependency}
   {:from :application.document, :to :domain.hierarchy, :kind :dependency}
+  {:from :ruby-language.graph-ruby, :to :ruby-language.rake, :kind :dependency}
   {:from :application.events, :to :domain.policy, :kind :dependency}
   {:from :application.document, :to :domain.log, :kind :dependency}
   {:from :application.document, :to :engine.hit, :kind :dependency}
@@ -139,6 +140,7 @@
   {:from :adapters.svg, :to :engine.route, :kind :dependency}
   {:from :adapters.svg, :to :engine.layout, :kind :dependency}
   {:from :application.document, :to :application.branch-base, :kind :dependency}
+  {:from :ruby-language.source-ruby, :to :ruby-language.rake, :kind :dependency}
   {:from :adapters.core, :to :adapters.web, :kind :dependency}
   {:from :engine.hit, :to :engine.layout, :kind :dependency}
   {:from :application.document, :to :domain.policy, :kind :dependency}
@@ -430,6 +432,13 @@
    :level 0,
    :lang :clojure,
    :id :ruby-language.graph-ruby}
+  {:stereotype nil,
+   :ns "uml-viewer.ruby-language.rake",
+   :name "Rake",
+   :file "src/uml_viewer/ruby_language/rake.clj",
+   :level 0,
+   :lang :clojure,
+   :id :ruby-language.rake}
   {:stereotype nil,
    :ns "uml-viewer.ruby-language.source-ruby",
    :name "SourceRuby",

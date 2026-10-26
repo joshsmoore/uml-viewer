@@ -1,8 +1,9 @@
 (ns uml-viewer.ruby-language.source-ruby
-  "Ruby LanguageSource: open :file and find a def, class, module, or HTTP
-  endpoint."
+  "Ruby LanguageSource: open :file and find a def, class, module, HTTP
+  endpoint, or rake task."
   (:require [clojure.string :as str]
             [uml-viewer.ruby-language.grape :as grape]
+            [uml-viewer.ruby-language.rake :as rake]
             [uml-viewer.source :as source]))
 
 (def ^:private pattern-fmts
@@ -13,7 +14,7 @@
 (def ^:private by-pattern (source/file-source pattern-fmts))
 
 (defn- endpoint-line [text member-name]
-  (some #(when (= member-name (:name %)) (:line %)) (grape/endpoints text)))
+  (some #(when (= member-name (:name %)) (:line %)) (concat (grape/endpoints text) (rake/tasks text))))
 
 (def impl
   (reify source/LanguageSource

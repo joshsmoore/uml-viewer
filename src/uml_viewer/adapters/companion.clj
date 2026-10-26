@@ -37,7 +37,7 @@
        "Python is one class per .py module. import and from-import are dependencies.\n"
        "class Child(Base) is inheritance when Base is a project module. A base of\n"
        "Protocol or ABC is implements.\n"
-       "Ruby is one class per .rb file. A Rails app sets :lang :ruby and :src at\n"
+       "Ruby is one class per .rb or .rake file. A Rails app sets :lang :ruby and :src at\n"
        "the project root (app and lib are scanned) with :prefix \"app\".\n"
        "Constants resolve as Zeitwerk autoloads them. class X < Base is inheritance,\n"
        "include/extend/prepend is implements, and associations are dependencies.\n"

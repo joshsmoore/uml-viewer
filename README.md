@@ -656,6 +656,12 @@ Pointed anywhere else, it scans that directory. With `:prefix "app"`,
 `assets`, `javascript`, and `vendor`. The class is named by the constant
 the file declares, so `ruby_llm_adapter.rb` is `RubyLLMAdapter`.
 
+A `.rake` file is a class too: `lib/tasks/email_provider.rake` is
+`:lib.tasks.email-provider`, named `email_provider.rake`. Its ops are its
+methods, then its tasks named through their namespaces, such as
+`email_provider:sync_hubspot`. It depends on the constants it uses, but it
+defines no constant, so nothing depends on it.
+
 Rails autoloads constants, so a reference needs no `require`. The scanner
 reads each file's constant the way Zeitwerk does. Each `app/*` directory,
 its `concerns`, and `lib` are roots. A constant resolves lexically,

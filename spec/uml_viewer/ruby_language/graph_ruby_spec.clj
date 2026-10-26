@@ -3,7 +3,8 @@
             [speclj.core :refer :all]
             [uml-viewer.graph :as graph]
             [uml-viewer.ruby-language.grape :as grape]
-            [uml-viewer.ruby-language.graph-ruby :as rb]))
+            [uml-viewer.ruby-language.graph-ruby :as rb]
+            [uml-viewer.ruby-language.rake :as rake]))
 
 (defn- spit-file [dir rel content]
   (let [f (io/file dir rel)]
@@ -158,6 +159,50 @@
     (should= {:name "GET auth/login" :text "GET auth/login"}
              (second (:ops (rb/read-file grape-api))))))
 
+(def ^:private rake-source
+  (str "namespace :email_provider do\n"
+       "  desc \"Sync\"\n"
+       "  task sync_hubspot: :environment do\n"
+       "    Marketing::SyncHubspotJob.perform_now\n"
+       "  end\n"
+       "\n"
+       "  namespace \"reports\" do\n"
+       "    task :weekly, [:day] => :environment do\n"
+       "    end\n"
+       "  end\n"
+       "  multitask \"all\" => [:a]\n"
+       "end\n"
+       "task cleanup: :environment\n"
+       "def helper\n"
+       "end\n"))
+
+(describe "rake tasks"
+  (it "names each task by its nested namespaces"
+    (should= [{:name "email_provider:sync_hubspot" :line 3}
+              {:name "email_provider:reports:weekly" :line 8}
+              {:name "email_provider:all" :line 11}
+              {:name "cleanup" :line 13}]
+             (rake/tasks rake-source)))
+
+  (it "finds nothing without a task"
+    (should= [] (rake/tasks "namespace :x do\nend\n"))
+    (should= [] (rake/tasks nil)))
+
+  (it "recognizes .rake files"
+    (should (rake/rake-file? "email_provider.rake"))
+    (should-not (rake/rake-file? "email_provider.rb")))
+
+  (it "lists tasks as ops after the methods, and sites sit in their task"
+    (let [surface (rb/read-rake-file rake-source)]
+      (should= ["helper" "email_provider:sync_hubspot" "email_provider:reports:weekly"
+                "email_provider:all" "cleanup"]
+               (mapv :name (:ops surface)))
+      (should= {:segs ["Marketing" "SyncHubspotJob"] :line 4 :in "email_provider:sync_hubspot" :call "perform_now"}
+               (select-keys (first (:refs surface)) [:segs :line :in :call]))))
+
+  (it "does not read tasks from a .rb file"
+    (should= [] (:ops (rb/read-file "task cleanup: :environment\n")))))
+
 (describe "ruby call sites"
   (it "records each reference's line, enclosing member, and call"
     (let [refs (:refs (rb/read-file (str "class Scan\n"
@@ -233,6 +278,12 @@
       (spit-file root "app/errors/gate_error.rb"
                  "class GateError < StandardError\n  include Enumerable\nend\n")
       (spit-file root "lib/tasks_helper.rb" "module TasksHelper\nend\n")
+      (spit-file root "lib/tasks/email_provider.rake"
+                 (str "namespace :email_provider do\n"
+                      "  task sync: :environment do\n"
+                      "    User.find_each { |u| Billing::Charge.new }\n"
+                      "  end\n"
+                      "end\n"))
       (spit-file root "spec/models/resume_spec.rb" "RSpec.describe Resume do\nend\n")
       (spit-file root "app/views/layouts/x.rb" "class Ignored\nend\n")
       (graph/scan (rb/->RubyGraph) root {:prefix "app"})))
@@ -250,6 +301,16 @@
       (should= "RubyLLMAdapter" (:name (class-of g :services.ruby-llm-adapter)))
       (should= :ruby (:lang (class-of g :models.resume)))
       (should= [{:name "publish!" :text "publish!"}] (:ops (class-of g :models.resume)))))
+
+  (it "draws a rake file as a class of its tasks"
+    (let [g @scanned
+          c (class-of g :lib.tasks.email-provider)]
+      (should= "email_provider.rake" (:name c))
+      (should= "app.lib.tasks.email-provider" (:ns c))
+      (should= [{:name "email_provider:sync" :text "email_provider:sync"}] (:ops c))
+      (should (edge? g :lib.tasks.email-provider :models.user :dependency))
+      (should (edge? g :lib.tasks.email-provider :services.billing.charge :dependency))
+      (should-not (some #(= :lib.tasks.email-provider (:to %)) (:edges g)))))
 
   (it "links superclasses, mixins, and associations"
     (let [g @scanned]
