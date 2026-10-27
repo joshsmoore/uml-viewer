@@ -59,6 +59,21 @@
   (it "ignores an unknown event"
     (should= {:state {:a 1} :reply nil} (viewer/handle {:a 1} :src {"type" "nope"}))))
 
+(describe "viewer relationship kinds"
+  (it "reads hidden kinds, dropping unknown names"
+    (should= #{:dependency :db-association} (viewer/kinds-of "dependency, db-association,bogus"))
+    (should= #{} (viewer/kinds-of "")))
+
+  (it "turns only-violations on or off from the posted value"
+    (with-redefs [events/show-violations-only (fn [s on?] (assoc s :violations-only on?))]
+      (should= true (:violations-only (:state (viewer/handle {} :src {"type" "violations" "value" "1"}))))
+      (should= false (:violations-only (:state (viewer/handle {} :src {"type" "violations" "value" "0"}))))))
+
+  (it "hides the posted kinds and rebuilds the view"
+    (with-redefs [events/hide-kinds (fn [s hidden] (assoc s :hidden-kinds hidden))]
+      (should= #{:implements}
+               (:hidden-kinds (:state (viewer/handle {} :src {"type" "kinds" "value" "implements"})))))))
+
 (describe "viewer pointer"
   (it "hovers what is under the pointer"
     (let [[x y] (center (state) :a)

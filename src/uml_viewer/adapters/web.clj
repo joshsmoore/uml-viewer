@@ -9,7 +9,8 @@
             [uml-viewer.application.document :as document]
             [uml-viewer.application.overlay :as overlay]
             [uml-viewer.domain.log :as log]
-            [uml-viewer.domain.mailbox :as mailbox])
+            [uml-viewer.domain.mailbox :as mailbox]
+            [uml-viewer.domain.policy :as policy])
   (:import [com.sun.net.httpserver HttpExchange HttpHandler HttpServer]
            [java.io IOException OutputStream]
            [java.net BindException InetSocketAddress URLDecoder]
@@ -133,7 +134,9 @@
     (.add headers "Cache-Control" "no-store")
     (.sendResponseHeaders ex 200 0)
     (try
-      (send! out (str (sse-message "frame" (or frame "")) (sse-message "card" (markup/json (or card {})))))
+      (send! out (str (sse-message "kinds" (markup/json (mapv name policy/relationship-kinds)))
+                      (sse-message "frame" (or frame ""))
+                      (sse-message "card" (markup/json (or card {})))))
       (swap! !runtime update :clients conj client)
       (catch IOException _ (.countDown done)))
     (.await done)

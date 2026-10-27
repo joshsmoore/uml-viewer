@@ -314,7 +314,7 @@
                                (singularize assoc-name)
                                assoc-name))))))
 
-(defn- associations-of [text holes]
+(defn- db-associations-of [text holes]
   (let [m (re-matcher #"(?m)^[ \t]*(belongs_to|has_one|has_many|has_and_belongs_to_many)[ \t(]+:(\w+)" text)]
     (loop [acc []]
       (if (.find m)
@@ -404,7 +404,7 @@
       :refs (mapv locate (refs-of text holes))
       :mixins (mixins-of text holes)
       :requires (requires-of text holes)
-      :associations (mapv locate (associations-of text holes))
+      :db-associations (mapv locate (db-associations-of text holes))
       :ops (ops-of text entries)
       :concern? (boolean (re-find #"(?m)^[ \t]*extend[ \t]+(?:::)?ActiveSupport::Concern\b" text))})))
 
@@ -547,14 +547,15 @@
         mixins (split-found ctx scope (:mixins surface))
         ref-hits (keep (fn [r] (when-let [id (resolved ctx scope (:segs r) (:top? r))] [id r]))
                        (:refs surface))
-        assoc-hits (keep (fn [a] (when-let [id (resolved ctx scope (:segs a) false)] [id a]))
-                         (:associations surface))
+        db-hits (keep (fn [a] (when-let [id (resolved ctx scope (:segs a) false)] [id a]))
+                      (:db-associations surface))
         req (require-facts ctx m)]
     {:inherits (:ids inherit)
      :impls (:ids mixins)
+     :db-associations (vec (distinct (map first db-hits)))
      :sites (graph/sites-by-target
-              (map (fn [[id x]] [id (select-keys x [:line :in :call])]) (concat ref-hits assoc-hits)))
-     :requires (vec (distinct (concat (map first ref-hits) (map first assoc-hits) (:requires req))))
+              (map (fn [[id x]] [id (select-keys x [:line :in :call])]) (concat ref-hits db-hits)))
+     :requires (vec (distinct (concat (map first ref-hits) (:requires req))))
      :foreigns (vec (distinct (concat (:foreign inherit) (:foreign mixins) (:foreigns req))))}))
 
 (defn- stereotype [m implemented]
@@ -577,6 +578,7 @@
     (graph/member-edges (assoc facts :id id)
                         [[:impls :implements]
                          [:inherits :inheritance]
+                         [:db-associations :db-association]
                          [:requires :dependency]
                          [:foreigns :dependency]])
     (:sites facts)))

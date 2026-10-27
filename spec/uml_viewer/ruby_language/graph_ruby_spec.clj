@@ -97,7 +97,7 @@
                 {:name "secret" :text "secret" :private true}]
                (:ops surface))))
 
-  (it "reads mixins, requires, and association targets"
+  (it "reads mixins, requires, and db association targets"
     (let [surface (rb/read-file
                     (str "class Resume < ApplicationRecord\n"
                          "  include Shares, Exportable\n"
@@ -113,8 +113,8 @@
       (should= [["Shares"] ["Exportable"] ["ActiveSupport" "Concern"]] (:mixins surface))
       (should= [{:kind :require :path "json"} {:kind :require-relative :path "helpers/format"}]
                (:requires surface))
-      (should= [["User"] ["ResumeSection"] ["Category"]] (map :segs (:associations surface)))
-      (should= [6 7 9] (map :line (:associations surface)))
+      (should= [["User"] ["ResumeSection"] ["Category"]] (map :segs (:db-associations surface)))
+      (should= [6 7 9] (map :line (:db-associations surface)))
       (should (:concern? surface)))))
 
 (def ^:private grape-api
@@ -312,12 +312,13 @@
       (should (edge? g :lib.tasks.email-provider :services.billing.charge :dependency))
       (should-not (some #(= :lib.tasks.email-provider (:to %)) (:edges g)))))
 
-  (it "links superclasses, mixins, and associations"
+  (it "links superclasses, mixins, and db associations"
     (let [g @scanned]
       (should (edge? g :models.resume :models.application-record :inheritance))
       (should (edge? g :models.resume :models.concerns.shareable :implements))
-      (should (edge? g :models.resume :models.user :dependency))
-      (should (edge? g :models.user :models.resume :dependency))
+      (should (edge? g :models.resume :models.user :db-association))
+      (should (edge? g :models.user :models.resume :db-association))
+      (should-not (edge? g :models.resume :models.user :dependency))
       (should (edge? g :services.billing.charge :services.billing.shapes :implements))))
 
   (it "resolves constants lexically, innermost namespace first"

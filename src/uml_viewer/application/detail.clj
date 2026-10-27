@@ -26,6 +26,7 @@
   {:inheritance ["extends" "extended by"]
    :implements ["implements" "implemented by"]
    :association ["associates with" "associated from"]
+   :db-association ["db-associates with" "db-associated from"]
    :dependency ["depends on" "used by"]
    :aggregation ["aggregates" "aggregated by"]
    :composition ["composes" "composed in"]})

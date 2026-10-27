@@ -286,6 +286,21 @@
               :svg (markup/html (svg/card model))}
              {:title "" :svg ""})}))
 
+(defn kinds-of
+  "Relationship kinds named in the comma-separated `v`; unknown names are dropped."
+  [v]
+  (let [known (set policy/relationship-kinds)]
+    (->> (str/split (str v) #",")
+         (map #(keyword (str/trim %)))
+         (filter known)
+         set)))
+
+(defn on-kinds [state hidden]
+  (done (events/hide-kinds state (kinds-of hidden))))
+
+(defn on-violations [state on]
+  (done (events/show-violations-only state (contains? #{"1" "true"} (str on)))))
+
 (defn- number-of [v]
   (try (Double/parseDouble (str v)) (catch Exception _ 0.0)))
 
@@ -307,4 +322,6 @@
     "card-press" (on-card-press state source-impl (number-of y))
     "card-close" (on-card-close state)
     "menu" (on-menu state (int-of id) (int-of index) value)
+    "kinds" (on-kinds state value)
+    "violations" (on-violations state value)
     (done state)))

@@ -55,9 +55,12 @@
 (defn- lookup-class [idx id]
   (get idx (as-id id)))
 
+(def relationship-kinds
+  [:dependency :db-association :association :aggregation :composition :implements :inheritance])
+
 (defn kind-rank [k]
-  (get {:implements 4 :inheritance 4 :composition 3 :aggregation 2
-        :association 1 :dependency 0} k 0))
+  (get {:implements 5 :inheritance 5 :composition 4 :aggregation 3
+        :db-association 2 :association 1 :dependency 0} k 0))
 
 (def proposal-notice
   "PROPOSAL — not instantiated in code")
@@ -345,6 +348,20 @@
                      (= :dependency (:kind e)) e
                      k (stamp-leaves (dissoc e :violating) false)
                      :else (dissoc e :violating))))))))
+
+(defn hide-kinds
+  "`doc` without the edges whose kind, after `:edge-kinds`, is in `hidden`."
+  [doc hidden]
+  (if (empty? hidden)
+    doc
+    (let [kinds (or (:edge-kinds doc) {})
+          kind-of #(get kinds [(:from %) (:to %)] (:kind %))]
+      (update doc :edges #(vec (remove (comp (set hidden) kind-of) %))))))
+
+(defn violations-only
+  "`view` keeping only the edges that break the dependency rule."
+  [view]
+  (update view :edges #(filterv :violating %)))
 
 (defn- apply-kinds [edges diagram]
   (apply-edge-kinds edges (:edge-kinds diagram) (:omit-edges diagram)))

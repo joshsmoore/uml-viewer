@@ -171,6 +171,19 @@
       (should= :classes (:declutter (events/cycle-declutter {:declutter :elements})))
       (should= :full (:declutter (events/cycle-declutter {:declutter :classes})))))
 
+  (it "hides relationship kinds, leaving the state alone when nothing changed"
+    (let [s {:hidden-kinds #{:implements}}]
+      (should= #{:dependency} (:hidden-kinds (events/hide-kinds s [:dependency])))
+      (should-be-same s (events/hide-kinds s [:implements]))
+      (should-be-same {} (events/hide-kinds {} []))))
+
+  (it "shows only violations, leaving the state alone when nothing changed"
+    (let [s {:violations-only true}]
+      (should= false (:violations-only (events/show-violations-only s false)))
+      (should-be-same s (events/show-violations-only s true))
+      (should-be-same {} (events/show-violations-only {} false))
+      (should= true (:violations-only (events/show-violations-only {} true)))))
+
   (it "declutters a full hierarchical diagram even when an edge end is missing"
     (let [doc {:hierarchical true
                :classes [{:id :a :name "A"} {:id :b :name "B"}]

@@ -90,6 +90,7 @@
   {:from :adapters.viewer, :to :source, :kind :dependency}
   {:from :adapters.viewer, :to :application.detail, :kind :dependency}
   {:from :application.document, :to :engine.compose, :kind :dependency}
+  {:from :adapters.web, :to :domain.policy, :kind :dependency}
   {:from :adapters.web, :to :adapters.markup, :kind :dependency}
   {:from :application.overlay, :to :domain.config, :kind :dependency}
   {:from :adapters.svg, :to :domain.hierarchy, :kind :dependency}

@@ -46,13 +46,14 @@
 (defn compile-view
   "Compile the hierarchical view at `focus`, or the stacked document.
   `extra` is a boolean (legacy proposal?) or
-  `{:proposal-id :declutter :proposal :only-changes}`."
+  `{:proposal-id :declutter :proposal :only-changes :hidden-kinds :violations-only}`."
   ([doc] (compile-view doc (System/getProperty "user.dir") []))
   ([doc metrics-root] (compile-view doc metrics-root []))
   ([doc metrics-root focus] (compile-view doc metrics-root focus {}))
   ([doc metrics-root focus extra]
    (let [opts (compile-opts extra)
-         painted (cond-> (overlay/apply-metrics doc (overlay/load-metrics metrics-root))
+         painted (cond-> (-> (overlay/apply-metrics doc (overlay/load-metrics metrics-root))
+                             (policy/hide-kinds (:hidden-kinds opts)))
                    (:only-changes opts) branch-diff/changed-only)
          focus (or focus [])
          pid (compile-proposal-id opts painted)
@@ -60,7 +61,8 @@
      (if (:hierarchical painted)
        (compose/compile-diagram
          (hierarchy/apply-declutter
-           (compile-source painted focus pid open-layer)
+           (cond-> (compile-source painted focus pid open-layer)
+             (:violations-only opts) policy/violations-only)
            (compile-declutter opts)))
        (compose/compile-document painted)))))
 
@@ -322,7 +324,9 @@
                                                 {:proposal-id (:proposal-id state)
                                                  :declutter (:declutter state)
                                                  :open-layer (:open-layer state)
-                                                 :only-changes (:only-changes state)}))
+                                                 :only-changes (:only-changes state)
+                                                 :hidden-kinds (:hidden-kinds state)
+                                                 :violations-only (:violations-only state)}))
                     drop-missing-detail))
               (catch Exception e
                 (log/log-exception! e (str "reload " path))

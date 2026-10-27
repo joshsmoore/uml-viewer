@@ -18,6 +18,7 @@
     :composition :diamond-fill
     :aggregation :diamond
     :association :open
+    :db-association :open
     :dependency :open
     :open))
 

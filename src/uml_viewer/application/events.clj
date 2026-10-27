@@ -15,7 +15,9 @@
   {:proposal-id (:proposal-id state)
    :declutter (or (:declutter state) :full)
    :open-layer (:open-layer state)
-   :only-changes (:only-changes state)})
+   :only-changes (:only-changes state)
+   :hidden-kinds (:hidden-kinds state)
+   :violations-only (:violations-only state)})
 
 (defn- rebuild [state]
   (if (and (:doc state) (:hierarchical (:doc state)))
@@ -41,6 +43,20 @@
   (if (:branch state)
     (rebuild (update state :only-changes not))
     state))
+
+(defn hide-kinds
+  "Show only the relationships whose kind is not in `hidden`."
+  [state hidden]
+  (if (= (set hidden) (set (:hidden-kinds state)))
+    state
+    (rebuild (assoc state :hidden-kinds (set hidden)))))
+
+(defn show-violations-only
+  "Show only the arrows that break the dependency rule, or every arrow again."
+  [state on?]
+  (if (= (boolean on?) (boolean (:violations-only state)))
+    state
+    (rebuild (assoc state :violations-only (boolean on?)))))
 
 (defn cycle-declutter
   [state]

@@ -107,8 +107,13 @@
       (reset! web/!runtime {:state {} :shown {:frame "<svg>one</svg>" :card {:svg ""}} :clients #{}})
       (let [c ^HttpURLConnection (.openConnection (URL. (str "http://127.0.0.1:" port "/events")))
             r (io/reader (.getInputStream c))
-            lines (doall (take 6 (line-seq r)))]
-        (should= ["event: frame" "data: <svg>one</svg>" "" "event: card" "data: {\"svg\":\"\"}" ""] lines)
+            lines (doall (take 9 (line-seq r)))]
+        (should= ["event: kinds"
+                  (str "data: [\"dependency\",\"db-association\",\"association\",\"aggregation\","
+                       "\"composition\",\"implements\",\"inheritance\"]")
+                  ""
+                  "event: frame" "data: <svg>one</svg>" "" "event: card" "data: {\"svg\":\"\"}" ""]
+                 lines)
         (should= 1 (count (:clients @web/!runtime)))
         ((private 'broadcast!) [(web/sse-message "frame" "two")])
         (should= ["event: frame" "data: two"] (doall (take 2 (line-seq r))))

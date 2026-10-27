@@ -156,6 +156,40 @@
   draggable(card, $("card-head"));
   draggable(source, source.querySelector("header"));
 
+  const kinds = $("kind-list");
+  const violations = $("violations");
+
+  function hiddenKinds() {
+    return [...kinds.querySelectorAll("input:not(:checked)")].map((i) => i.value);
+  }
+
+  function sendKinds() {
+    post({ type: "kinds", value: hiddenKinds().join(",") });
+  }
+
+  function showKinds(names) {
+    const hidden = new Set(hiddenKinds());
+    kinds.replaceChildren(
+      ...names.map((n) => {
+        const label = document.createElement("label");
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.value = n;
+        box.checked = !hidden.has(n);
+        box.addEventListener("change", sendKinds);
+        label.append(box, n);
+        return label;
+      })
+    );
+    sendKinds();
+    sendViolations();
+  }
+
+  function sendViolations() {
+    post({ type: "violations", value: violations.checked ? 1 : 0 });
+  }
+  violations.addEventListener("change", sendViolations);
+
   let shownCard = "";
   function showCard(c) {
     if (!c.svg) {
@@ -176,6 +210,7 @@
       $("status").hidden = true;
       sendSize();
     });
+    events.addEventListener("kinds", (e) => showKinds(JSON.parse(e.data || "[]")));
     events.addEventListener("frame", (e) => {
       if (e.data) stage.innerHTML = e.data;
     });

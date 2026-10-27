@@ -36,3 +36,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
   height: calc(100vh - 96px); display: flex; flex-direction: column; background: #f8fafc;
   border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 12px 40px rgba(0,0,0,.5); z-index: 30; }
 #source iframe { flex: 1; border: 0; width: 100%; border-radius: 0 0 6px 6px; background: #f8fafc; }
+#kinds { position: fixed; bottom: 16px; left: 16px; z-index: 10; margin: 0; padding: 4px 10px 6px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 4px; font-size: 12px; color: var(--ink); }
+#kinds legend { color: var(--gold); padding: 0 4px; }
+#kinds label { display: block; cursor: pointer; white-space: nowrap; }
+#kinds .violations { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); color: rgb(232,96,80); }
+#kinds input { accent-color: var(--gold); margin: 2px 6px 2px 0; vertical-align: middle; }

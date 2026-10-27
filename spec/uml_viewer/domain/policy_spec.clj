@@ -242,3 +242,34 @@
           out (first (policy/mark-violations [e] {:a 0 :b 1}))]
       (should-not (:violating out))
       (should= [false true] (mapv :violating (:leaves out))))))
+
+(describe "hidden relationship kinds"
+  (with doc {:edge-kinds {[:a :c] :association}
+             :edges [{:from :a :to :b :kind :dependency}
+                     {:from :a :to :c :kind :dependency}
+                     {:from :b :to :c :kind :db-association}]})
+
+  (it "keeps every edge when nothing is hidden"
+    (should= @doc (policy/hide-kinds @doc #{}))
+    (should= @doc (policy/hide-kinds @doc nil)))
+
+  (it "drops edges by their kind after policy remaps"
+    (should= [[:a :c] [:b :c]]
+             (mapv (juxt :from :to) (:edges (policy/hide-kinds @doc #{:dependency}))))
+    (should= [[:a :b] [:b :c]]
+             (mapv (juxt :from :to) (:edges (policy/hide-kinds @doc #{:association}))))
+    (should= [[:a :b] [:a :c]]
+             (mapv (juxt :from :to) (:edges (policy/hide-kinds @doc #{:db-association}))))))
+
+(describe "kind rank"
+  (it "ranks db associations above associations and below aggregation"
+    (should (< (policy/kind-rank :association) (policy/kind-rank :db-association)
+               (policy/kind-rank :aggregation)))))
+
+(describe "violations only"
+  (it "keeps only the edges that break the dependency rule"
+    (should= [{:from :a :to :b :violating true}]
+             (:edges (policy/violations-only
+                       {:edges [{:from :a :to :b :violating true}
+                                {:from :b :to :c}
+                                {:from :c :to :a :violating false}]})))))
