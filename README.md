@@ -62,45 +62,39 @@ gh auth login                  # once, for --pr
 `claude` must be on your `PATH` (set `CLAUDE_BIN` to use another binary).
 The project must be a git repository; branch and PR review read `origin`.
 
-### Install into a project
+### Install
 
-From the root of the project you want to view:
-
-```bash
-cd /path/to/the-project
-curl -fsSL https://raw.githubusercontent.com/joshsmoore/uml-viewer/master/scripts/get-uml-viewer -o get-uml-viewer
-chmod +x get-uml-viewer
-UML_VIEWER_REPO_URL=https://github.com/joshsmoore/uml-viewer.git ./get-uml-viewer --install-only
-```
-
-`get-uml-viewer` clones uml-viewer into **gitignored**
-`.uml-viewer/uml-viewer/` (its nested `.git` is invisible to the project's
-repo), adds a `# BEGIN UML-VIEWER` block to `.gitignore`, and writes
-`./uml`. Without `--install-only` it also starts the viewer.
-`UML_VIEWER_REPO_URL` picks the clone source (the script defaults to
-upstream `unclebob/uml-viewer`, which lacks branch and PR review) and
-`UML_VIEWER_REF` the branch (default `master`). Run it again to update the
-clone; reruns leave `.gitignore` as it is.
-
-To run a local checkout of uml-viewer instead of the clone, so its
-uncommitted changes show up, point `./uml` at it:
+Clone uml-viewer once, anywhere, and put its `bin` on your `PATH`:
 
 ```bash
-sed -i '' 's#:local/root "[^"]*"#:local/root "/path/to/uml-viewer"#' uml
+git clone https://github.com/joshsmoore/uml-viewer.git ~/uml-viewer
+export PATH="$HOME/uml-viewer/bin:$PATH"   # in your shell rc
 ```
 
-A later `get-uml-viewer` puts `./uml` back on the clone.
+`uml` runs from the root of the project you want to view. It launches the
+viewer from the checkout it lives in, so `git pull` there updates every
+project. In each project, gitignore what the viewer writes:
+
+```
+.uml-viewer/
+uml-viewer-log.txt
+```
+
+Commit the project's `examples/<project>.policy.edn` and
+`.claude/rules/uml-viewer.md`; the generated IR and `.metrics/` are
+derived from the code and belong in `.gitignore` too.
 
 ### Start, and find the port
 
 ```bash
-./uml                          # viewer + companion; opens the browser
-./uml --pr 2245                # review GitHub PR 2245 (see below)
+cd /path/to/the-project
+uml                            # viewer + companion; opens the browser
+uml --pr 2245                  # review GitHub PR 2245 (see below)
 cat .uml-viewer/web.edn        # {:port 2xxxx, :url "http://127.0.0.1:2xxxx/"}
 open "$(sed -E 's/.*:url "([^"]+)".*/\1/' .uml-viewer/web.edn)"
 ```
 
-`./uml` returns immediately; the viewer is its own JVM running in the
+`uml` returns immediately; the viewer is its own JVM running in the
 background. It serves the diagram on `127.0.0.1` and opens it in your
 browser. The port is fixed per project, in 20000–29999 (the next free one
 within 20 if that is taken, else any), and written with the URL to
@@ -125,16 +119,16 @@ live in `.claude/rules/uml-viewer.md`.
 
 | Command | Who | What |
 |---------|-----|------|
-| `./uml` | anyone | Fresh viewer in a background JVM, opened in the browser. Starts the companion. Waits for `:display`. |
-| `./uml --pr N` (or `-pr N`) | anyone | Same, reviewing pull request N against its base. |
-| `./uml --restart [--pr N\|local]` | **associated agent only** | New JVM, same companion. Restores the last view, including the reviewed PR; `--pr` switches it. |
-| `./uml --help` | anyone | Usage. |
+| `uml` | anyone | Fresh viewer in a background JVM, opened in the browser. Starts the companion. Waits for `:display`. |
+| `uml --pr N` (or `-pr N`) | anyone | Same, reviewing pull request N against its base. |
+| `uml --restart [--pr N\|local]` | **associated agent only** | New JVM, same companion. Restores the last view, including the reviewed PR; `--pr` switches it. |
+| `uml --help` | anyone | Usage. |
 
 Do **not** pass `--restart` unless you are that companion recycling the
 viewer. A stray `--restart` skips spawning Claude and leaves a diagram
 with no agent. To recycle: write `:quit-for-restart` to
 `.uml-viewer/to-viewer.edn`, wait for the JVM to exit, then
-`./uml --restart`. The new JVM restores depth, pan, zoom, proposal, the
+`uml --restart`. The new JVM restores depth, pan, zoom, proposal, the
 B and C toggles, and the PR under review (`.uml-viewer/session.edn`). Do
 not SIGKILL. Aliases `:uml-viewer` / `:uml-viewer-restart` still work where
 present.
@@ -148,7 +142,7 @@ From **this repo**:
 
 ```bash
 clj -M:ir                            # policy → examples/uml-viewer.edn
-clj -M:run                           # holds the terminal; prefer ./uml elsewhere
+clj -M:run                           # holds the terminal; prefer uml elsewhere
 clj -M:run examples/library.edn
 clj -M:run --help
 clj -M:spec
@@ -175,7 +169,7 @@ base is not counted.
 itself, or outside git, nothing is marked. A checkout, commit, or stage
 refreshes the marks.
 
-**Pull requests, without a checkout.** `./uml --pr 2245`, or ask the
+**Pull requests, without a checkout.** `uml --pr 2245`, or ask the
 companion (it sends `{:op :review-pr :pr 2245}`). The viewer fetches
 `pull/2245/head` into `refs/uml/pr/2245`, takes the PR's base from `gh`
 (else `:base-branch`, else the default base), scans the PR head with the

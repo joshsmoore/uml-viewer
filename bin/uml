@@ -1,11 +1,8 @@
 #!/bin/zsh
-# Loader for this project. Written by get-uml-viewer.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")" && pwd)"
-cd "$ROOT"
-
-# __DEPS_LINE__ is replaced by get-uml-viewer.
-DEPS='__DEPS_LINE__'
+TOOL="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(pwd)"
+DEPS="{:deps {uml-viewer/uml-viewer {:local/root \"$TOOL\"}}}"
 
 edn_path() {
   local name base f
@@ -33,21 +30,24 @@ launch_viewer() {
     [[ $# -gt 0 ]] && printf ' %s' "$@"
     printf '\n'
   } >> "$LOG"
-  # `clj` is rlwrap on Homebrew; a background rlwrap stops (SIGTTOU) and
-  # never starts the JVM. `clojure` is the same CLI without the tty wrapper.
   nohup clojure -Sdeps "$DEPS" -M -m uml-viewer.main.uml-viewer "$@" >> "$LOG" 2>&1 </dev/null &
   disown
   echo "UML viewer started (pid $!). Log: $LOG"
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  echo "usage: ./uml [--restart] [--pr N|local]" >&2
+  echo "usage: uml [--restart] [--pr N|local]   (run from the project root)" >&2
   echo "  (no args)   opens the viewer in the browser; companion writes the diagram" >&2
   echo "  --restart   new JVM, same companion; restores last view" >&2
   echo "  --pr N      review GitHub PR N without checking it out" >&2
   echo "  --pr local  with --restart, back to the working tree" >&2
   echo "  The viewer detaches; exceptions go to $LOG." >&2
   exit 0
+fi
+
+if [[ "$(git rev-parse --show-toplevel 2>/dev/null)" != "$ROOT" ]]; then
+  echo "uml: run from the root of a git project" >&2
+  exit 1
 fi
 
 if [[ "${1:-}" == "--restart" ]]; then

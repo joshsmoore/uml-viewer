@@ -35,17 +35,17 @@ The diagram is already on screen.
 - `:context` mail: `{:context :real}` or `{:context :proposal :proposal-id
   id :name "..."}` is the diagram under discussion. Stay on that context
   until a later `:context` arrives.
-- Prefer `./uml` (fresh start: spawn this companion, wait for
-  `:display`) and `./uml --restart` (new JVM, keep this session,
-  restore last view). If `./uml` is missing, use aliases `:uml-viewer`
-  and `:uml-viewer-restart`, or tell the user to run `get-uml-viewer`
-  in this directory (it clones uml-viewer into gitignored
-  `.uml-viewer/uml-viewer/`).
+- Prefer `uml`, the `bin/uml` script of a uml-viewer checkout run from
+  this directory (fresh start: spawn this companion, wait for
+  `:display`), and `uml --restart` (new JVM, keep this session,
+  restore last view). If `uml` is not on `PATH`, use aliases
+  `:uml-viewer` and `:uml-viewer-restart`, or tell the user to clone
+  uml-viewer and put its `bin` on `PATH`.
 - Do not start the viewer on launch; EDN reloads when the file mtime
   changes. To restart it: write `:quit-for-restart` to
   `.uml-viewer/to-viewer.edn`, wait for the JVM to exit, then
-  `./uml --restart`. Do not pass `--restart` except through that
-  wrapper. Do not SIGKILL. The viewer is a local web page that `./uml`
+  `uml --restart`. Do not pass `--restart` except through that
+  script. Do not SIGKILL. The viewer is a local web page that `uml`
   opens; its address is in `.uml-viewer/web.edn`. **Quit** on that page
   kills only this companion's tmux session, not other Claude agents;
   closing the tab stops nothing. If this Claude process dies, tmux

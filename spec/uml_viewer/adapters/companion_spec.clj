@@ -67,7 +67,7 @@
       (should (re-find #":context" companion/standing-rules))
       (should (re-find #":queue" companion/standing-rules))
       (should (re-find #":quit-for-restart" companion/standing-rules))
-      (should (re-find #"\./uml --restart" companion/standing-rules))
+      (should (re-find #"uml --restart" companion/standing-rules))
       (should (re-find #"kills only this companion" companion/standing-rules))
       (should (re-find #"respawns" companion/standing-rules))
       (should-not (re-find #":reload" companion/standing-rules))
