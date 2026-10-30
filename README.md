@@ -80,9 +80,11 @@ project. In each project, gitignore what the viewer writes:
 uml-viewer-log.txt
 ```
 
-Commit the project's `examples/<project>.policy.edn` and
-`.claude/rules/uml-viewer.md`; the generated IR and `.metrics/` are
-derived from the code and belong in `.gitignore` too.
+Copy this repo's `.claude/rules/uml-viewer.md` into the project's
+`.claude/rules/` so every teammate's companion follows the same rules.
+Commit that and `examples/<project>.policy.edn` (layers, prefix, omits,
+edge kinds, proposals). The generated `examples/<project>.edn` and
+`.metrics/` are derived from the code; gitignore them too.
 
 ### Start, and find the port
 
@@ -152,8 +154,9 @@ clj -M:mutate src/uml_viewer/engine/layout.clj
 ```
 
 This project's `:crap` alias uses `../clojure/crap4clj`. `:mutate` pins
-[clj-mutate](https://github.com/unclebob/clj-mutate) by git SHA. Commit
-`.metrics/` so a clone has numbers without re-running those tools.
+[clj-mutate](https://github.com/unclebob/clj-mutate) by git SHA. This repo
+commits its own `.metrics/` and generated IR so a clone shows its diagram
+with numbers; a project using the viewer should not.
 
 Rename or move of a function is a new form: overlay does not match old names.
 
