@@ -73,17 +73,19 @@ export PATH="$HOME/uml-viewer/bin:$PATH"   # in your shell rc
 
 `uml` runs from the root of the project you want to view. It launches the
 viewer from the checkout it lives in, so `git pull` there updates every
-project. In each project, gitignore what the viewer writes:
+project. In each project, once:
 
-```
-.uml-viewer/
-uml-viewer-log.txt
+```bash
+cd /path/to/the-project
+uml --install
 ```
 
-Commit `examples/<project>.policy.edn` (layers, prefix, omits, edge
-kinds, proposals). The generated `examples/<project>.edn` and `.metrics/`
-are derived from the code; gitignore them too. The companion gets its
-rules from the viewer at spawn, so the project needs no rules file.
+That adds a `# BEGIN UML-VIEWER` block to `.gitignore` covering what the
+viewer writes (`.uml-viewer/`, `uml-viewer-log.txt`) and what is derived
+from the code (`examples/<project>.edn`, `.metrics/`). Rerunning replaces
+the block. Commit `examples/<project>.policy.edn` (layers, prefix, omits,
+edge kinds, proposals). The companion gets its rules from the viewer at
+spawn, so the project needs no rules file.
 
 ### Start, and find the port
 
@@ -123,6 +125,7 @@ live in `.claude/rules/uml-viewer.md`.
 | `uml` | anyone | Fresh viewer in a background JVM, opened in the browser. Starts the companion. Waits for `:display`. |
 | `uml --pr N` (or `-pr N`) | anyone | Same, reviewing pull request N against its base. |
 | `uml --restart [--pr N\|local]` | **associated agent only** | New JVM, same companion. Restores the last view, including the reviewed PR; `--pr` switches it. |
+| `uml --install` | anyone | Write the viewer's `.gitignore` block in this project. |
 | `uml --help` | anyone | Usage. |
 
 Do **not** pass `--restart` unless you are that companion recycling the
