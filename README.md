@@ -80,11 +80,10 @@ project. In each project, gitignore what the viewer writes:
 uml-viewer-log.txt
 ```
 
-Copy this repo's `.claude/rules/uml-viewer.md` into the project's
-`.claude/rules/` so every teammate's companion follows the same rules.
-Commit that and `examples/<project>.policy.edn` (layers, prefix, omits,
-edge kinds, proposals). The generated `examples/<project>.edn` and
-`.metrics/` are derived from the code; gitignore them too.
+Commit `examples/<project>.policy.edn` (layers, prefix, omits, edge
+kinds, proposals). The generated `examples/<project>.edn` and `.metrics/`
+are derived from the code; gitignore them too. The companion gets its
+rules from the viewer at spawn, so the project needs no rules file.
 
 ### Start, and find the port
 
