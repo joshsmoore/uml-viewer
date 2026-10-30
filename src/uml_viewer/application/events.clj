@@ -58,6 +58,17 @@
     state
     (rebuild (assoc state :violations-only (boolean on?)))))
 
+(defn hide-unselected
+  "Hide every arrow but the selected box's own while a box is selected, or show them all."
+  [state on?]
+  (assoc state :hide-unselected (boolean on?)))
+
+(defn shown-scene
+  "The scene as drawn: every arrow, or only the selected box's own."
+  [state]
+  (let [id (and (:hide-unselected state) (hit/selected-box-id (:selected state)))]
+    (cond-> (:scene state) id (hit/edges-touching id))))
+
 (defn cycle-declutter
   [state]
   (rebuild (assoc state :declutter (hierarchy/next-declutter (:declutter state)))))
@@ -212,7 +223,7 @@
 (defn on-move [state x y]
   (let [[wx wy] (world-xy state x y)]
     (assoc state
-      :hover (hit/at (:scene state) wx wy)
+      :hover (hit/at (shown-scene state) wx wy)
       :pointer [x y])))
 
 (defn regen-hit?
@@ -226,7 +237,7 @@
            (< y 44) (< x 320))
     (back state)
     (let [[wx wy] (world-xy state x y)
-          hit (hit/at (:scene state) wx wy)]
+          hit (hit/at (shown-scene state) wx wy)]
       (assoc state :selected hit))))
 
 (defn- scroll-opts [opts]

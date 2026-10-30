@@ -184,6 +184,21 @@
       (should-be-same {} (events/show-violations-only {} false))
       (should= true (:violations-only (events/show-violations-only {} true)))))
 
+  (it "draws only the selected box's arrows when hiding unselected ones"
+    (let [s (assoc (state) :scene {:edges [{:from :a :to :b} {:from :b :to :c} {:from :c :to :d :via-ids #{:a}}]})]
+      (should-be-same (:scene s) (events/shown-scene s))
+      (should-be-same (:scene s) (events/shown-scene (events/hide-unselected s true)))
+      (should= [{:from :a :to :b} {:from :c :to :d :via-ids #{:a}}]
+               (:edges (events/shown-scene (-> s (events/hide-unselected true)
+                                               (assoc :selected {:kind :child :parent :a})))))
+      (should= false (:hide-unselected (events/hide-unselected s nil)))))
+
+  (it "ignores hidden arrows under the pointer"
+    (let [shown (assoc (state) :scene {:classes [] :edges [{:from :a :to :b :points [[0 100] [200 100]]}]})
+          s (assoc shown :hide-unselected true :selected {:kind :class :id :c})]
+      (should= :edge (:kind (:hover (events/on-move shown 100 100))))
+      (should-be-nil (:hover (events/on-move s 100 100)))))
+
   (it "declutters a full hierarchical diagram even when an edge end is missing"
     (let [doc {:hierarchical true
                :classes [{:id :a :name "A"} {:id :b :name "B"}]

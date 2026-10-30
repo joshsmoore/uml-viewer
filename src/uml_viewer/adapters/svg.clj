@@ -537,12 +537,7 @@
      :world-w (/ (max 0 (- w layout/sidebar-w)) z)
      :world-h (/ h z)}))
 
-(defn selected-box-id [hit]
-  (case (:kind hit)
-    :class (:id hit)
-    (:child :port) (:parent hit)
-    :package (:id hit)
-    nil))
+(def selected-box-id hit/selected-box-id)
 
 (defn hovered-box-id [hit]
   (case (:kind hit)

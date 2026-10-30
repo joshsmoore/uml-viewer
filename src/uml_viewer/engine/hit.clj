@@ -140,6 +140,21 @@
 (defn package-by-id [scene id]
   (first (filter #(= id (:id %)) (:packages scene))))
 
+(defn selected-box-id
+  "The class or package a selection hit belongs to, or nil."
+  [hit]
+  (case (:kind hit)
+    :class (:id hit)
+    (:child :port) (:parent hit)
+    :package (:id hit)
+    nil))
+
+(defn edges-touching
+  "`scene` with only the arrows that start, end, or pass at box `id`."
+  [scene id]
+  (update scene :edges
+          #(filterv (fn [e] (or (= id (:from e)) (= id (:to e)) (contains? (:via-ids e) id))) %)))
+
 (defn connected-edges [scene class-id]
   (filter (fn [e]
             (or (= class-id (:from e))

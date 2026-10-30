@@ -158,6 +158,7 @@
 
   const kinds = $("kind-list");
   const violations = $("violations");
+  const unselected = $("unselected");
 
   function hiddenKinds() {
     return [...kinds.querySelectorAll("input:not(:checked)")].map((i) => i.value);
@@ -183,12 +184,18 @@
     );
     sendKinds();
     sendViolations();
+    sendUnselected();
   }
 
   function sendViolations() {
     post({ type: "violations", value: violations.checked ? 1 : 0 });
   }
   violations.addEventListener("change", sendViolations);
+
+  function sendUnselected() {
+    post({ type: "unselected", value: unselected.checked ? 1 : 0 });
+  }
+  unselected.addEventListener("change", sendUnselected);
 
   let shownCard = "";
   function showCard(c) {

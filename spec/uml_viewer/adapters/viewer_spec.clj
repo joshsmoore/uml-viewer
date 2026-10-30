@@ -69,6 +69,10 @@
       (should= true (:violations-only (:state (viewer/handle {} :src {"type" "violations" "value" "1"}))))
       (should= false (:violations-only (:state (viewer/handle {} :src {"type" "violations" "value" "0"}))))))
 
+  (it "hides the other arrows while a box is selected from the posted value"
+    (should= true (:hide-unselected (:state (viewer/handle {} :src {"type" "unselected" "value" "1"}))))
+    (should= false (:hide-unselected (:state (viewer/handle {} :src {"type" "unselected" "value" "0"})))))
+
   (it "hides the posted kinds and rebuilds the view"
     (with-redefs [events/hide-kinds (fn [s hidden] (assoc s :hidden-kinds hidden))]
       (should= #{:implements}

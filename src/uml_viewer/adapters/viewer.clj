@@ -280,7 +280,7 @@
   "What the page shows: the window SVG, and the card with its title."
   [state]
   (let [model (card-model state)]
-    {:frame (markup/html (svg/frame state (window state)))
+    {:frame (markup/html (svg/frame (assoc state :scene (events/shown-scene state)) (window state)))
      :card (if model
              {:title (or (get-in model [:class :name]) "Class")
               :svg (markup/html (svg/card model))}
@@ -298,8 +298,14 @@
 (defn on-kinds [state hidden]
   (done (events/hide-kinds state (kinds-of hidden))))
 
+(defn- on? [v]
+  (contains? #{"1" "true"} (str v)))
+
 (defn on-violations [state on]
-  (done (events/show-violations-only state (contains? #{"1" "true"} (str on)))))
+  (done (events/show-violations-only state (on? on))))
+
+(defn on-unselected [state on]
+  (done (events/hide-unselected state (on? on))))
 
 (defn- number-of [v]
   (try (Double/parseDouble (str v)) (catch Exception _ 0.0)))
@@ -324,4 +330,5 @@
     "menu" (on-menu state (int-of id) (int-of index) value)
     "kinds" (on-kinds state value)
     "violations" (on-violations state value)
+    "unselected" (on-unselected state value)
     (done state)))
