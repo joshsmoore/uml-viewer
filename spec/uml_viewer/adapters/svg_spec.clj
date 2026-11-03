@@ -198,7 +198,14 @@
                (svg/branch-line (assoc s :hide-changes true)))
       (should= "vs main @ abc1234 · 1 class changed  (B hides)  (only changes; C shows all)"
                (svg/branch-line (assoc s :only-changes true)))
-      (should-be-nil (svg/branch-line {})))))
+      (should-be-nil (svg/branch-line {}))))
+
+  (it "titles the window with the branch or pull request shown"
+    (let [s {:scene {:diagram {:title "Lib"}}}]
+      (should= "Lib" (svg/window-title s))
+      (should= "Lib - TER-123-fix" (svg/window-title (assoc s :ref-label "TER-123-fix")))
+      (should= "Lib - PR 234" (svg/window-title (assoc s :ref-label "PR 234")))
+      (should-be-nil (svg/window-title (assoc s :waiting true))))))
 
 (describe "arrow popup"
   (it "shows one pair without a header"

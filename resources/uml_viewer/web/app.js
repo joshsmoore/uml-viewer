@@ -218,6 +218,9 @@
       sendSize();
     });
     events.addEventListener("kinds", (e) => showKinds(JSON.parse(e.data || "[]")));
+    events.addEventListener("title", (e) => {
+      if (e.data) document.title = e.data;
+    });
     events.addEventListener("frame", (e) => {
       if (e.data) stage.innerHTML = e.data;
     });

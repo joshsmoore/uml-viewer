@@ -233,6 +233,12 @@
       (should (str/starts-with? frame "<svg"))
       (should= {:title "" :svg ""} card)))
 
+  (it "names the tab after the diagram and its branch"
+    (let [s (assoc-in (state) [:scene :diagram :title] "Lib")]
+      (should= "Lib" (:title (viewer/views s)))
+      (should= "Lib - feature" (:title (viewer/views (assoc s :ref-label "feature"))))
+      (should= "UML viewer" (:title (viewer/views (assoc s :waiting true))))))
+
   (it "renders the open card with its class name"
     (let [{:keys [card]} (viewer/views (assoc (state) :detail-id :a))]
       (should= "A" (:title card))

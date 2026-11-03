@@ -131,6 +131,7 @@
   [root doc]
   (let [gd (branch-diff/git-dir root)]
     {:branch (when gd (branch-diff/changes root (:base-branch doc)))
+     :ref-label (when gd (branch-diff/current-branch root))
      :git-dir gd
      :git-stamp (branch-diff/git-stamp gd)}))
 
@@ -143,6 +144,7 @@
       (let [gd (branch-diff/git-dir root)]
         {:raw (assoc doc :policy-file (:policy-file local))
          :git {:branch changes
+               :ref-label (str "PR " pr)
                :git-dir gd
                :git-stamp (branch-diff/git-stamp gd)}}))))
 

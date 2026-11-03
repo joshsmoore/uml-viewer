@@ -590,8 +590,17 @@
              (when changes? (change-mark c))))
      (map dep-triangle (:dep-indicators scene))]))
 
-(defn- diagram-banner [state]
+(defn window-title
+  "The diagram's title with the branch or pull request it shows, or nil
+  while waiting."
+  [state]
   (when-let [title (and (not (:waiting state)) (get-in state [:scene :diagram :title]))]
+    (if-let [label (:ref-label state)]
+      (str title " - " label)
+      title)))
+
+(defn- diagram-banner [state]
+  (when-let [title (window-title state)]
     (if (get-in state [:scene :diagram :proposal])
       (text title 12 8 {:size 16 :ink gold})
       (text title 12 8 {:size 12 :ink muted}))))

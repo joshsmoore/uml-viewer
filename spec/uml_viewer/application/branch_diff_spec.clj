@@ -169,6 +169,14 @@
       (write! dir "app/a.rb" "class A\n  def x; end\nend\n")
       (should-be-nil (bd/changes (str dir) "main"))))
 
+  (it "names the checked-out branch, or the commit when detached"
+    (let [dir (repo-on-main)]
+      (should= "main" (bd/current-branch (str dir)))
+      (git! dir "checkout" "-q" "-b" "feature")
+      (should= "feature" (bd/current-branch (str dir)))
+      (git! dir "checkout" "-q" "--detach")
+      (should= 7 (count (bd/current-branch (str dir))))))
+
   (it "lists commits, edits, and new files since the branch left its base"
     (let [dir (repo-on-main)]
       (git! dir "checkout" "-q" "-b" "feature")

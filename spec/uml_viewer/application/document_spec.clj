@@ -440,6 +440,7 @@
       (should= :modified (:changed (by-id :a)))
       (should-not-contain :changed (by-id :b))
       (should= "main" (get-in s [:branch :base]))
+      (should= "feature" (:ref-label s))
       (should-not-be-nil (:git-stamp s))))
 
   (it "drops the marks after checking out the base branch"
@@ -513,6 +514,7 @@
           s (document/load-path (.getPath (io/file root "diagram.edn")) 7)
           a ((by-id s) :models.a)]
       (should= 7 (:pr s))
+      (should= "PR 7" (:ref-label s))
       (should= 7 (get-in s [:branch :pr]))
       (should= :modified (:changed a))
       (should= [{:name "go" :text "go" :changed :added}] (:ops a))

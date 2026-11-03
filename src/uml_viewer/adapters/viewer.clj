@@ -277,10 +277,12 @@
       true keep-fit)))
 
 (defn views
-  "What the page shows: the window SVG, and the card with its title."
+  "What the page shows: the tab title, the window SVG, and the card with
+  its title."
   [state]
   (let [model (card-model state)]
-    {:frame (markup/html (svg/frame (assoc state :scene (events/shown-scene state)) (window state)))
+    {:title (or (svg/window-title state) "UML viewer")
+     :frame (markup/html (svg/frame (assoc state :scene (events/shown-scene state)) (window state)))
      :card (if model
              {:title (or (get-in model [:class :name]) "Class")
               :svg (markup/html (svg/card model))}

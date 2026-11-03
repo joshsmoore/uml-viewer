@@ -32,6 +32,15 @@
   (or (not-empty (git root "symbolic-ref" "--quiet" "--short" "refs/remotes/origin/HEAD"))
       (first (filter #(ref? root %) ["main" "master"]))))
 
+(defn current-branch
+  "The checked-out branch, or the short commit when HEAD is detached.
+  Nil outside git."
+  [root]
+  (let [branch (git root "rev-parse" "--abbrev-ref" "HEAD")]
+    (if (= "HEAD" branch)
+      (git root "rev-parse" "--short" "HEAD")
+      (not-empty branch))))
+
 (defn- on-base? [root base]
   (let [branch (git root "rev-parse" "--abbrev-ref" "HEAD")]
     (or (= branch base)
