@@ -127,6 +127,7 @@
   {:from :engine.compose, :to :engine.route, :kind :dependency}
   {:from :application.events, :to :engine.layout, :kind :dependency}
   {:from :adapters.viewer, :to :adapters.markup, :kind :dependency}
+  {:from :adapters.core, :to :domain.mailbox, :kind :dependency}
   {:from :adapters.svg, :to :engine.hit, :kind :dependency}
   {:from :engine.compose, :to :domain.geom, :kind :dependency}
   {:from :main.ir-generator, :to :rust-language.graph-rust, :kind :dependency}

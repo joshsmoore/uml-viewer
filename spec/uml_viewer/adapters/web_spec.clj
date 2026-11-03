@@ -5,7 +5,8 @@
             [uml-viewer.adapters.companion :as companion]
             [uml-viewer.adapters.viewer :as viewer]
             [uml-viewer.adapters.web :as web]
-            [uml-viewer.application.document :as document])
+            [uml-viewer.application.document :as document]
+            [uml-viewer.domain.mailbox :as mailbox])
   (:import [java.net HttpURLConnection URL]
            [java.util.concurrent Executors]))
 
@@ -53,12 +54,20 @@
     (should= ["event: frame\ndata: g\n\n"]
              (web/changed-messages {:frame "f" :card {:svg ""}} {:frame "g" :card {:svg ""}}))
     (should= ["event: card\ndata: {\"svg\":\"x\"}\n\n"]
-             (web/changed-messages {:frame "f"} {:frame "f" :card {:svg "x"}})))
+             (web/changed-messages {:frame "f"} {:frame "f" :card {:svg "x"}}))
+    (should= ["event: title\ndata: Lib - main\n\n"]
+             (web/changed-messages {:frame "f" :card {:svg ""}}
+                                   {:title "Lib - main" :frame "f" :card {:svg ""}})))
 
   (it "picks a port per project and names the page"
     (let [p (web/preferred-port "/tmp/a")]
       (should (<= 20000 p 29999))
-      (should= p (web/preferred-port "/tmp/a")))
+      (should= p (web/preferred-port "/tmp/a"))
+      (try
+        (mailbox/use-instance! 7)
+        (should-not= p (web/preferred-port "/tmp/a"))
+        (should (str/ends-with? (str (web/web-file "/r")) ".uml-viewer/pr-7/web.edn"))
+        (finally (mailbox/use-instance! nil))))
     (should= "http://127.0.0.1:5/" (web/url 5))
     (should (str/ends-with? (str (web/web-file "/r")) ".uml-viewer/web.edn"))))
 
@@ -104,14 +113,15 @@
 
   (it "streams the current views to a new page and then each change"
     (let [port ((private 'serve!) (temp-root))]
-      (reset! web/!runtime {:state {} :shown {:frame "<svg>one</svg>" :card {:svg ""}} :clients #{}})
+      (reset! web/!runtime {:state {} :shown {:title "Lib - main" :frame "<svg>one</svg>" :card {:svg ""}} :clients #{}})
       (let [c ^HttpURLConnection (.openConnection (URL. (str "http://127.0.0.1:" port "/events")))
             r (io/reader (.getInputStream c))
-            lines (doall (take 9 (line-seq r)))]
+            lines (doall (take 12 (line-seq r)))]
         (should= ["event: kinds"
                   (str "data: [\"dependency\",\"db-association\",\"association\",\"aggregation\","
                        "\"composition\",\"implements\",\"inheritance\"]")
                   ""
+                  "event: title" "data: Lib - main" ""
                   "event: frame" "data: <svg>one</svg>" "" "event: card" "data: {\"svg\":\"\"}" ""]
                  lines)
         (should= 1 (count (:clients @web/!runtime)))

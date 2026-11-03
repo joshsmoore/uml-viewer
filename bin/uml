@@ -41,6 +41,36 @@ install_gitignore() {
   echo "Wrote the uml-viewer block to $file."
 }
 
+pr_arg() {
+  local prev=""
+  for a in "$@"; do
+    if [[ "$prev" == "--pr" || "$prev" == "-pr" ]]; then
+      echo "$a"
+      return
+    fi
+    prev="$a"
+  done
+}
+
+instance_dir() {
+  local pr
+  pr="$(pr_arg "$@")"
+  if [[ -z "$pr" && -n "${UML_VIEWER_INSTANCE:-}" ]]; then
+    echo ".uml-viewer/${UML_VIEWER_INSTANCE}"
+  elif [[ -n "$pr" && "$pr" != "local" ]]; then
+    echo ".uml-viewer/pr-${pr}"
+  else
+    echo ".uml-viewer"
+  fi
+}
+
+running_url() {
+  local f="$(instance_dir "$@")/web.edn" u
+  [[ -f "$f" ]] || return 1
+  u="$(sed -E 's/.*:url "([^"]+)".*/\1/' "$f")"
+  [[ -n "$u" ]] && curl -s -o /dev/null --max-time 1 "$u" && echo "$u"
+}
+
 launch_viewer() {
   {
     printf '----- %s starting uml-viewer' "$(date '+%Y-%m-%d %H:%M:%S')"
@@ -56,7 +86,8 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   echo "usage: uml [--restart] [--pr N|local]   (run from the project root)" >&2
   echo "  (no args)   opens the viewer in the browser; companion writes the diagram" >&2
   echo "  --restart   new JVM, same companion; restores last view" >&2
-  echo "  --pr N      review GitHub PR N without checking it out" >&2
+  echo "  --pr N      review GitHub PR N without checking it out; each PR is its" >&2
+  echo "              own viewer and companion under .uml-viewer/pr-N/" >&2
   echo "  --pr local  with --restart, back to the working tree" >&2
   echo "  --install   add the viewer's files to this project's .gitignore" >&2
   echo "  The viewer detaches; exceptions go to $LOG." >&2
@@ -75,6 +106,9 @@ fi
 
 if [[ "${1:-}" == "--restart" ]]; then
   shift
+  if [[ -z "$(pr_arg "$@")" && -n "${UML_VIEWER_INSTANCE:-}" ]]; then
+    set -- --pr "${UML_VIEWER_INSTANCE#pr-}" "$@"
+  fi
   edn="$(edn_path)"
   if [[ -n "$edn" ]]; then
     launch_viewer --restart "$@" "$edn"
@@ -82,6 +116,13 @@ if [[ "${1:-}" == "--restart" ]]; then
     launch_viewer --restart "$@"
   fi
   exit 0
+fi
+
+if u="$(running_url "$@")"; then
+  echo "uml: a viewer for this project is already running at $u" >&2
+  echo "     open that page, or use uml --restart after it quits" >&2
+  (open "$u" || xdg-open "$u") >/dev/null 2>&1 || true
+  exit 1
 fi
 
 launch_viewer "$@"

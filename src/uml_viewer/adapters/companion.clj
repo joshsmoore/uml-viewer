@@ -86,10 +86,17 @@
        "this Claude process dies, tmux respawns it in the same pane.\n"
        "Do not commit or push unless asked.\n"))
 
-(def launch-prompt
+(defn launch-prompt
+  "First prompt: the launch task, and this viewer's mailbox directory
+  when it is not the default."
+  []
   (str "On launch: from this working directory, update the hierarchical policy "
        "to match the project's namespaces (no invented layers/components), regenerate the "
-       "IR, then wait for directives."))
+       "IR, then wait for directives."
+       (when @mailbox/!instance
+         (str " This viewer's mailbox is " (mailbox/dir-path) "/ (to-agent.edn and "
+              "to-viewer.edn live there, not in .uml-viewer/); uml --restart "
+              "restarts this viewer."))))
 
 (defn claude-executable
   []
@@ -110,13 +117,14 @@
 (defonce !session-name (atom nil))
 
 (defn session-id
-  "Tmux session unique to this project directory."
+  "Tmux session unique to this project directory and viewer instance."
   [cwd]
   (let [path (.getCanonicalPath (io/file (or cwd ".")))
         base (-> (.getName (io/file path))
                  (str/replace #"[^A-Za-z0-9_-]" "-"))
         h (Integer/toHexString (hash path))]
-    (str "uml-viewer-" base "-" h)))
+    (str "uml-viewer-" base "-" h
+         (when-let [i @mailbox/!instance] (str "-" i)))))
 
 (defn current-session
   "Session name for this project, from companion.edn or the live atom."
@@ -162,26 +170,28 @@
 (defn new-session-args
   ([cwd] (new-session-args cwd (session-id cwd)))
   ([cwd session]
-   ["new-session" "-d" "-s" session "-c" cwd
-    "-e" "COLORTERM=truecolor"
-    (claude-executable) "--dangerously-skip-permissions"
-    "--append-system-prompt" standing-rules
-    launch-prompt]))
+   (concat
+     ["new-session" "-d" "-s" session "-c" cwd
+      "-e" "COLORTERM=truecolor"]
+     (when-let [i @mailbox/!instance] ["-e" (str "UML_VIEWER_INSTANCE=" i)])
+     [(claude-executable) "--dangerously-skip-permissions"
+      "--append-system-prompt" standing-rules
+      (launch-prompt)])))
 
 (defn kill-session-args
   ([] (kill-session-args (current-session)))
   ([session]
    ["kill-session" "-t" session]))
 
-(def wake-message
-  "You have mail from the viewer. If idle, read .uml-viewer/to-agent.edn.")
+(defn wake-message []
+  (str "You have mail from the viewer. If idle, read " (mailbox/dir-path) "/to-agent.edn."))
 
 (defn notify-steps
   "Wake-up: literal text, pause, then CR. Claude Code reads LF (C-j) as a
   newline in the prompt, so none is sent."
   ([] (notify-steps (current-session)))
   ([session]
-   [["send-keys" "-t" session "-l" wake-message]
+   [["send-keys" "-t" session "-l" (wake-message)]
     [:sleep 150]
     ["send-keys" "-t" session "C-m"]]))
 

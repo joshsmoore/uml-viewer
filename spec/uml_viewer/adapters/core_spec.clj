@@ -1,7 +1,8 @@
 (ns uml-viewer.adapters.core-spec
   (:require [speclj.core :refer :all]
             [uml-viewer.adapters.core :as core]
-            [uml-viewer.adapters.web :as web]))
+            [uml-viewer.adapters.web :as web]
+            [uml-viewer.domain.mailbox :as mailbox]))
 
 (describe "cli args"
   (it "defaults the path and does not restart"
@@ -50,4 +51,9 @@
           (should= ["doc.edn" :src false nil] @args)
           (should (re-find #"Watching" out))
           (should (re-find #"Viewer at http://127.0.0.1:1/" out))
-          (should (re-find #"real diagram above Proposals" out)))))))
+          (should (re-find #"real diagram above Proposals" out))))
+      (try
+        (with-redefs [web/start! (fn [& _] (mailbox/dir-path))]
+          (with-out-str (core/start! :src "--pr" "9" "doc.edn"))
+          (should= ".uml-viewer/pr-9" (mailbox/dir-path)))
+        (finally (mailbox/use-instance! nil))))))

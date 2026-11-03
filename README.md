@@ -123,10 +123,16 @@ live in `.claude/rules/uml-viewer.md`.
 | Command | Who | What |
 |---------|-----|------|
 | `uml` | anyone | Fresh viewer in a background JVM, opened in the browser. Starts the companion. Waits for `:display`. |
-| `uml --pr N` (or `-pr N`) | anyone | Same, reviewing pull request N against its base. |
+| `uml --pr N` (or `-pr N`) | anyone | Same, reviewing pull request N against its base. Its own viewer, companion, port, and `.uml-viewer/pr-N/` directory, so several PRs of one project can be open at once beside the working tree. |
 | `uml --restart [--pr N\|local]` | **associated agent only** | New JVM, same companion. Restores the last view, including the reviewed PR; `--pr` switches it. |
 | `uml --install` | anyone | Write the viewer's `.gitignore` block in this project. |
 | `uml --help` | anyone | Usage. |
+
+A second `uml` for a project (or for the same PR) whose viewer is still
+running does not start another JVM: two viewers polling one mailbox would
+steal each other's mail. It names the running page and opens it instead.
+A PR's companion runs with `UML_VIEWER_INSTANCE=pr-N` in its environment,
+so a bare `uml --restart` from that companion restarts that PR's viewer.
 
 Do **not** pass `--restart` unless you are that companion recycling the
 viewer. A stray `--restart` skips spawning Claude and leaves a diagram
@@ -518,7 +524,9 @@ element highlights it. Hand-written IR may set `:violating true` directly.
 ## Companion mailbox
 
 The viewer and the companion Claude talk through `.uml-viewer/` in the examined
-project (gitignored). The file is the mail; tmux is only a doorbell.
+project (gitignored). A viewer started with `--pr N` uses `.uml-viewer/pr-N/`
+for every file below (and `web.edn`), so each open PR has its own mailbox,
+session, companion, and page. The file is the mail; tmux is only a doorbell.
 
 | File | Direction |
 |------|-----------|

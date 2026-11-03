@@ -47,6 +47,7 @@
   "SSE messages for the parts of `views` that differ from `shown`."
   [shown views]
   (cond-> []
+    (not= (:title shown) (:title views)) (conj (sse-message "title" (:title views)))
     (not= (:frame shown) (:frame views)) (conj (sse-message "frame" (:frame views)))
     (not= (:card shown) (:card views)) (conj (sse-message "card" (markup/json (:card views))))))
 
@@ -129,12 +130,13 @@
         done (CountDownLatch. 1)
         out (.getResponseBody ex)
         client {:out out :done done}
-        {:keys [frame card]} (:shown @!runtime)]
+        {:keys [title frame card]} (:shown @!runtime)]
     (.add headers "Content-Type" "text/event-stream")
     (.add headers "Cache-Control" "no-store")
     (.sendResponseHeaders ex 200 0)
     (try
       (send! out (str (sse-message "kinds" (markup/json (mapv name policy/relationship-kinds)))
+                      (sse-message "title" (or title "UML viewer"))
                       (sse-message "frame" (or frame ""))
                       (sse-message "card" (markup/json (or card {})))))
       (swap! !runtime update :clients conj client)
@@ -165,10 +167,10 @@
         (try (text! ex 500 "text/plain" "error") (catch Throwable _))))))
 
 (defn preferred-port
-  "A port in 20000–29999 fixed by the project, so a restarted viewer
-  comes back where its pages are already pointed."
+  "A port in 20000–29999 fixed by the project and viewer instance, so a
+  restarted viewer comes back where its pages are already pointed."
   [root]
-  (+ 20000 (mod (hash (.getCanonicalPath (io/file root))) 10000)))
+  (+ 20000 (mod (hash [(.getCanonicalPath (io/file root)) @mailbox/!instance]) 10000)))
 
 (defn- bind [port]
   (try

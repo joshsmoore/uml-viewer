@@ -33,6 +33,17 @@
           (should woke?)
           (should @woke)))))
 
+  (it "gives a pull request viewer its own session, mailbox, and env"
+    (try
+      (mailbox/use-instance! 430)
+      (let [sid (companion/session-id "/tmp/proj-a")
+            args (companion/new-session-args "/tmp/proj-a")]
+        (should (re-find #"^uml-viewer-proj-a-[0-9a-f]+-pr-430$" sid))
+        (should (some #{"UML_VIEWER_INSTANCE=pr-430"} args))
+        (should (re-find #"mailbox is .uml-viewer/pr-430/" (companion/launch-prompt)))
+        (should (re-find #"read .uml-viewer/pr-430/to-agent.edn" (companion/wake-message))))
+      (finally (mailbox/use-instance! nil))))
+
   (it "gives each project its own tmux session"
     (let [a (companion/session-id "/tmp/proj-a")
           b (companion/session-id "/tmp/proj-b")]
@@ -56,7 +67,9 @@
       (should (some #{"--append-system-prompt"} args))
       (should (re-find #"claude$" (companion/claude-executable)))
       (should (some #{companion/standing-rules} args))
-      (should (some #{companion/launch-prompt} args))
+      (should (some #{(companion/launch-prompt)} args))
+      (should-not (some #(re-find #"UML_VIEWER_INSTANCE" %) args))
+      (should-not (re-find #"mailbox is" (companion/launch-prompt)))
       (should (re-find #"On launch" companion/standing-rules))
       (should (re-find #"invent" companion/standing-rules))
       (should (re-find #":proposals" companion/standing-rules))
@@ -103,8 +116,9 @@
   (it "wakes Claude with text, a pause, then Enter, and no stray newline"
     (let [sid "uml-viewer-proj-abc"
           steps (companion/notify-steps sid)]
-      (should= ["send-keys" "-t" sid "-l" companion/wake-message]
+      (should= ["send-keys" "-t" sid "-l" (companion/wake-message)]
                (first steps))
+      (should (re-find #"read .uml-viewer/to-agent.edn" (companion/wake-message)))
       (should= [:sleep 150] (second steps))
       (should= ["send-keys" "-t" sid "C-m"] (nth steps 2))
       (should= 3 (count steps))))
@@ -128,7 +142,7 @@
                         (= "uml-viewer-mine-abc" (last args)) 0
                         :else 1))]
         (should (companion/notify-agent! root))
-        (should (some #(= ["send-keys" "-t" "uml-viewer-mine-abc" "-l" companion/wake-message] %)
+        (should (some #(= ["send-keys" "-t" "uml-viewer-mine-abc" "-l" (companion/wake-message)] %)
                       @calls)))))
 
   (it "does not wake anything when no candidate session is live"

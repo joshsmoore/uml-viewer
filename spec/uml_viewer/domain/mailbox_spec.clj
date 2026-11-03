@@ -9,6 +9,18 @@
     (.mkdirs)))
 
 (describe "mailbox"
+  (it "keeps a pull request's files in their own directory"
+    (try
+      (should= ".uml-viewer" (mailbox/dir-path))
+      (mailbox/use-instance! :local)
+      (should= ".uml-viewer" (mailbox/dir-path))
+      (mailbox/use-instance! 2290)
+      (should= ".uml-viewer/pr-2290" (mailbox/dir-path))
+      (should= (io/file "/r/.uml-viewer/pr-2290/to-viewer.edn") (mailbox/to-viewer "/r"))
+      (should= (io/file "/r/.uml-viewer/pr-2290/session.edn") (mailbox/session-file "/r"))
+      (finally (mailbox/use-instance! nil)))
+    (should= (io/file "/r/.uml-viewer/to-agent.edn") (mailbox/to-agent "/r")))
+
   (it "round-trips a restart session"
     (let [root (tmp-root)]
       (mailbox/write-session! root {:focus [:engine] :zoom 1.1 :cam-x 12})

@@ -1,5 +1,6 @@
 (ns uml-viewer.adapters.core
-  (:require [uml-viewer.adapters.web :as web]))
+  (:require [uml-viewer.adapters.web :as web]
+            [uml-viewer.domain.mailbox :as mailbox]))
 
 (def help-text
   (str "Usage: clj -M:run [options] [edn-file]\n"
@@ -12,6 +13,8 @@
        "\n"
        "  --pr N            Review GitHub pull request N without checking it\n"
        "                    out: fetch its head and diagram it against its base.\n"
+       "                    Each PR gets its own viewer, companion, and\n"
+       "                    .uml-viewer/pr-N/ directory beside the working tree's.\n"
        "                    With --restart, --pr local returns to the working tree.\n"
        "\n"
        "  --restart         Associated agent only (via :uml-viewer-restart).\n"
@@ -57,6 +60,7 @@
     (if help?
       (do (print help-text) :help)
       (do
+        (mailbox/use-instance! pr)
         (let [u (web/start! path source-impl restart? pr)]
           (println "Watching" path)
           (println "Viewer at" u)

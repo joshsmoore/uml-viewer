@@ -11,8 +11,30 @@
 (def session-name "session.edn")
 (def companion-name "companion.edn")
 
+(defonce !instance (atom nil))
+
+(defn instance-name
+  "Subdirectory for a viewer reviewing pull request `pr`; nil for the
+  working tree."
+  [pr]
+  (when (and pr (not= :local pr))
+    (str "pr-" pr)))
+
+(defn use-instance!
+  "Bind this JVM's mailbox, session, and page to pull request `pr`'s
+  directory, or to the working tree's when nil or :local."
+  [pr]
+  (reset! !instance (instance-name pr)))
+
+(defn dir-path
+  "This instance's directory relative to the project root."
+  []
+  (if-let [i @!instance]
+    (str dir-name "/" i)
+    dir-name))
+
 (defn dir [root]
-  (io/file root dir-name))
+  (io/file root (dir-path)))
 
 (defn to-viewer [root]
   (io/file (dir root) to-viewer-name))
